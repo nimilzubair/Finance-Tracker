@@ -1,6 +1,7 @@
-// components/LoansOverview.tsx
+// components/LoansOverview.tsx - FIXED
 'use client';
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/context/AuthContext';
 
 interface Loan {
   loanid: number;
@@ -12,19 +13,30 @@ interface Loan {
 }
 
 const LoansOverview = ({ showTitle = false }) => {
+  const { token } = useAuth();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchLoans();
-  }, []);
+    if (token) {
+      fetchLoans();
+    }
+  }, [token]);
 
   const fetchLoans = async () => {
     try {
-      const response = await fetch('/api/loans?userId=1'); // Using userId=1 for now
+      const response = await fetch('/api/loans', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
       if (response.ok) {
         const data = await response.json();
         setLoans(data);
+      } else {
+        console.error('Failed to fetch loans:', response.status);
       }
     } catch (error) {
       console.error('Error fetching loans:', error);

@@ -1,4 +1,4 @@
-// app/api/installments/payment/route.ts
+// app/api/installments/payment/route.ts - No changes needed for filtering
 import { NextRequest } from "next/server";
 import pool from "@/lib/db";
 import jwt from "jsonwebtoken";
@@ -8,14 +8,13 @@ const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 function getUserIdFromRequest(request: NextRequest): number | null {
   try {
     const authHeader = request.headers.get("authorization");
-    if (!authHeader) return null;
-
-    const token = authHeader.split(" ")[1];
-    if (!token) return null;
-
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
-    return decoded.userId;
-  } catch {
+    if (!authHeader || !authHeader.startsWith("Bearer ")) return null;
+    
+    const token = authHeader.substring(7);
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    return decoded.userId || decoded.id || null;
+  } catch (error) {
+    console.error("JWT verification error:", error);
     return null;
   }
 }
@@ -25,7 +24,7 @@ export async function POST(request: NextRequest) {
   try {
     const userId = getUserIdFromRequest(request);
     if (!userId) {
-      return Response.json({ error: "User not logged in" }, { status: 401 });
+      return Response.json({ error: "User not authenticated" }, { status: 401 });
     }
 
     const { installmentid, amountpaid, paiddate } = await request.json();

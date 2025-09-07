@@ -1,8 +1,7 @@
-// app/api/(auth)/check/route.ts
+// app/api/(auth)/check/route.ts - FIXED
 import { NextRequest, NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "supersecret"; // keep in .env
+import { JWT_CONFIG } from '@/lib/jwt';
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,20 +10,16 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "No token provided" }, { status: 401 });
     }
 
-    const token = authHeader.split(" ")[1];
+    const token = authHeader.substring(7); // Consistent extraction
 
     // Verify token
-    const decoded = jwt.verify(token, JWT_SECRET) as {
-      userId: number;
-      username: string;
-      email: string;
-    };
+    const decoded = jwt.verify(token, JWT_CONFIG.secret) as any; // Use any for flexibility
 
     // ✅ return consistent user object
     return NextResponse.json({
       success: true,
       user: {
-        userid: decoded.userId,
+        userid: decoded.userId || decoded.id,
         username: decoded.username,
         email: decoded.email,
       },

@@ -1,6 +1,7 @@
-// components/InstallmentsOverview.tsx
+// components/InstallmentsOverview.tsx - FIXED
 'use client';
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/context/AuthContext';
 
 interface Installment {
   installmentid: number;
@@ -18,19 +19,30 @@ interface Installment {
 }
 
 const InstallmentsOverview = ({ showTitle = false }) => {
+  const { token } = useAuth();
   const [installments, setInstallments] = useState<Installment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchInstallments();
-  }, []);
+    if (token) {
+      fetchInstallments();
+    }
+  }, [token]);
 
   const fetchInstallments = async () => {
     try {
-      const response = await fetch('/api/installments?userId=1'); // Using userId=1 for now
+      const response = await fetch('/api/installments', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
       if (response.ok) {
         const data = await response.json();
         setInstallments(data);
+      } else {
+        console.error('Failed to fetch installments:', response.status);
       }
     } catch (error) {
       console.error('Error fetching installments:', error);

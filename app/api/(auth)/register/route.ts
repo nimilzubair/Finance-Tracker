@@ -3,8 +3,7 @@ import { NextRequest } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
+import { JWT_CONFIG } from '@/lib/jwt';
 
 export async function POST(request: NextRequest) {
   let client;
@@ -51,6 +50,7 @@ export async function POST(request: NextRequest) {
 
     client = await pool.connect();
 
+    // Check for existing username or email
     const existing = await client.query(
       "SELECT userid FROM users WHERE username = $1 OR email = $2",
       [username, email]
@@ -62,9 +62,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ✅ hash password
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Insert new user
     const result = await client.query(
       `INSERT INTO users (username, email, password) 
        VALUES ($1, $2, $3) 
@@ -74,33 +75,56 @@ export async function POST(request: NextRequest) {
 
     const newUser = result.rows[0];
 
-    // ✅ issue JWT
+    // ✅ FIXED: Remove unnecessary type assertions
     const token = jwt.sign(
-      { userId: newUser.userid, username: newUser.username, email: newUser.email },
-      JWT_SECRET,
-      { expiresIn: "7d" }
+      { 
+        userId: newUser.userid, 
+        username: newUser.username, 
+        email: newUser.email 
+      },
+      JWT_CONFIG.secret,
+      { 
+        expiresIn: JWT_CONFIG.expiresIn
+      }
     );
 
     return Response.json(
       {
         message: "User registered successfully",
-        user: newUser,
+        user: {
+          userid: newUser.userid,
+          username: newUser.username,
+          email: newUser.email,
+          createdat: newUser.createdat
+        },
         token,
       },
       { status: 201 }
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("Registration error: ", error);
-    return Response.json({ error: "Internal server error" }, { status: 500 });
+    
+    // Handle specific database errors
+    if (error.code === '23505') { // Unique violation
+      return Response.json(
+        { error: "Username or email already exists." },
+        { status: 409 }
+      );
+    }
+    
+    return Response.json(
+      { error: "Internal server error" }, 
+      { status: 500 }
+    );
   } finally {
     if (client) client.release();
   }
 }
 
-// --- validation helpers ---
+// --- Validation helpers ---
 function isValidUsername(username: string): boolean {
-  const regex = /^(?=.*[A-Za-z])[A-Za-z._]+$/;
-  return regex.test(username);
+  const regex = /^(?=.*[A-Za-z])[A-Za-z_]+$/;
+  return regex.test(username) && username.length >= 3;
 }
 
 function isStrongPassword(password: string): boolean {

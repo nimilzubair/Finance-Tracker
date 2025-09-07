@@ -1,61 +1,71 @@
-'use client'
+// app/register/page.tsx
+'use client';
 
-import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/context/AuthContext';
 
 interface FormData {
-  email: string
-  username: string
-  password: string
-  confirm_password: string
+  email: string;
+  username: string;
+  password: string;
+  confirm_password: string;
 }
 
 export default function RegisterPage() {
-  const router = useRouter()
+  const router = useRouter();
+  const { login } = useAuth();
   const [formData, setFormData] = useState<FormData>({
     email: '',
     username: '',
     password: '',
     confirm_password: '',
-  })
-  const [error, setError] = useState<string>('')
-  const [loading, setLoading] = useState(false)
+  });
+  const [error, setError] = useState<string>('');
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
-    })
-  }
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setLoading(true)
+    e.preventDefault();
+    setError('');
+    setLoading(true);
 
     try {
       const res = await fetch('/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
-      })
+      });
 
-      const data = await res.json()
+      const data = await res.json();
+      
       if (!res.ok) {
         throw new Error(
           Array.isArray(data.error) ? data.error.join(', ') : data.error
-        )
+        );
       }
 
-      // success → redirect to login
-      router.push('/auth/login')
+      // Auto-login after successful registration
+      if (data.token && data.user) {
+        login(data.token, data.user);
+        router.push('/dashboard');
+      } else {
+        // If no token returned, redirect to login
+        router.push('/login');
+      }
     } catch (err: any) {
-      setError(err.message || 'Registration failed')
+      setError(err.message || 'Registration failed');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 dark:from-gray-900 dark:to-gray-800 py-8 px-4 sm:px-6 lg:px-8">
@@ -173,5 +183,5 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
