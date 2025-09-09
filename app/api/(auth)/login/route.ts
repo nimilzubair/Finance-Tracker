@@ -1,9 +1,9 @@
-// api/(auth)/login/route.ts - FIXED
+// api/(auth)/login/route.ts
 import { NextRequest } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import { JWT_CONFIG } from '@/lib/jwt';
+import { SignJWT } from "jose";
+import { JWT_CONFIG } from "@/lib/jwt";
 
 export async function POST(request: NextRequest) {
   let client;
@@ -44,12 +44,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ✅ Generate JWT with userId, username, email
-    const token = jwt.sign(
-      { userId: user.userid, username: user.username, email: user.email },
-      JWT_CONFIG.secret, // Use centralized secret
-      { expiresIn: JWT_CONFIG.expiresIn }
-    );
+    // ✅ Generate JWT with jose
+    const secret = new TextEncoder().encode(JWT_CONFIG.secret);
+    const token = await new SignJWT({
+      userId: user.userid,
+      username: user.username,
+      email: user.email,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime(JWT_CONFIG.expiresIn) // e.g. "1h" or "7d"
+      .sign(secret);
 
     // Remove password before sending response
     const { password: _, ...userWithoutPassword } = user;

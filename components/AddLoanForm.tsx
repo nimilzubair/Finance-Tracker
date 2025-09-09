@@ -1,34 +1,73 @@
-// components/AddLoanForm.tsx - FIXED
+// components/AddLoanForm.tsx - Updated with editing support
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 
-interface AddLoanFormProps {
-  onSuccess?: () => void;
+interface Loan {
+  loanid?: number;
+  loantitle: string;
+  totalamount: number | string;
+  amountpaid?: number | string;
+  amountleft?: number | string;
+  description?: string;
 }
 
-const AddLoanForm: React.FC<AddLoanFormProps> = ({ onSuccess }) => {
-  const { user, token } = useAuth(); // FIX: Use token from context
+interface AddLoanFormProps {
+  editingLoan?: Loan | null;
+  onSuccess?: () => void;
+  onCancel?: () => void;
+}
+
+const AddLoanForm: React.FC<AddLoanFormProps> = ({ editingLoan, onSuccess, onCancel }) => {
+  const { user, token } = useAuth();
   const [formData, setFormData] = useState({
     loantitle: '',
     totalamount: '',
     amountpaid: '',
-    amountleft: ''
+    amountleft: '',
+    description: ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState<'success' | 'error'>('success');
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    if (editingLoan) {
+      setFormData({
+        loantitle: editingLoan.loantitle,
+        totalamount: editingLoan.totalamount.toString(),
+        amountpaid: editingLoan.amountpaid?.toString() || '',
+        amountleft: editingLoan.amountleft?.toString() || '',
+        description: editingLoan.description || ''
+      });
+    }
+  }, [editingLoan]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [name]: value
     });
+
+    // Clear message when user starts typing
+    if (message) {
+      setMessage('');
+    }
+  };
+
+  const calculateAmountLeft = () => {
+    const total = parseFloat(formData.totalamount) || 0;
+    const paid = parseFloat(formData.amountpaid) || 0;
+    return (total - paid).toFixed(2);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !token) { // FIX: Check both user and token
+    
+    if (!user || !token) {
       setMessage('User not authenticated');
+      setMessageType('error');
       return;
     }
 
@@ -36,36 +75,72 @@ const AddLoanForm: React.FC<AddLoanFormProps> = ({ onSuccess }) => {
     setMessage('');
 
     try {
-      const response = await fetch('/api/loans', {
-        method: 'POST',
+      const totalAmount = parseFloat(formData.totalamount);
+      const amountPaid = parseFloat(formData.amountpaid || '0');
+      const amountLeft = parseFloat(formData.amountleft || calculateAmountLeft());
+
+      if (isNaN(totalAmount) || totalAmount <= 0) {
+        throw new Error('Total amount must be a positive number');
+      }
+
+      if (amountPaid < 0) {
+        throw new Error('Amount paid cannot be negative');
+      }
+
+      if (amountLeft < 0) {
+        throw new Error('Amount left cannot be negative');
+      }
+
+      if (amountPaid > totalAmount) {
+        throw new Error('Amount paid cannot exceed total amount');
+      }
+
+      const loanData = {
+        loantitle: formData.loantitle.trim(),
+        totalamount: totalAmount,
+        amountpaid: amountPaid,
+        amountleft: amountLeft,
+        description: formData.description.trim() || undefined,
+        ...(editingLoan?.loanid && { loanid: editingLoan.loanid })
+      };
+
+      const method = editingLoan ? 'PUT' : 'POST';
+      const url = editingLoan ? `/api/loans?id=${editingLoan.loanid}` : '/api/loans';
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // FIX: Use token from context
+          'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          loantitle: formData.loantitle,
-          totalamount: parseFloat(formData.totalamount),
-          amountpaid: parseFloat(formData.amountpaid || '0'),
-          amountleft: parseFloat(formData.amountleft || formData.totalamount),
-        }),
+        body: JSON.stringify(loanData),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        setMessage('Loan added successfully!');
-        setFormData({
-          loantitle: '',
-          totalamount: '',
-          amountpaid: '',
-          amountleft: '',
-        });
-        onSuccess?.();
+        setMessage(editingLoan ? 'Loan updated successfully!' : 'Loan added successfully!');
+        setMessageType('success');
+        
+        if (!editingLoan) {
+          setFormData({
+            loantitle: '',
+            totalamount: '',
+            amountpaid: '',
+            amountleft: '',
+            description: ''
+          });
+        }
+        
+        setTimeout(() => {
+          if (onSuccess) onSuccess();
+        }, 1500);
       } else {
-        setMessage(data.error || 'Failed to add loan');
+        throw new Error(data.error || data.message || `Failed to ${editingLoan ? 'update' : 'add'} loan`);
       }
-    } catch (error) {
-      setMessage('Error adding loan');
+    } catch (error: any) {
+      setMessage(error.message || `Error ${editingLoan ? 'updating' : 'adding'} loan`);
+      setMessageType('error');
     } finally {
       setIsSubmitting(false);
     }
@@ -74,13 +149,14 @@ const AddLoanForm: React.FC<AddLoanFormProps> = ({ onSuccess }) => {
   return (
     <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
       <h2 className="text-xl font-semibold mb-4 text-blue-600 dark:text-blue-400">
-        Add New Loan
+        {editingLoan ? 'Edit Loan' : 'Add New Loan'}
       </h2>
+      
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Loan Title */}
         <div>
           <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-            Loan Title
+            Loan Title *
           </label>
           <input
             type="text"
@@ -88,16 +164,17 @@ const AddLoanForm: React.FC<AddLoanFormProps> = ({ onSuccess }) => {
             value={formData.loantitle}
             onChange={handleChange}
             required
-            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md 
-                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md 
+                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
             placeholder="e.g., Car Loan, Mortgage"
+            disabled={isSubmitting}
           />
         </div>
 
         {/* Total Amount */}
         <div>
           <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-            Total Amount
+            Total Amount ($) *
           </label>
           <input
             type="number"
@@ -106,16 +183,18 @@ const AddLoanForm: React.FC<AddLoanFormProps> = ({ onSuccess }) => {
             onChange={handleChange}
             required
             step="0.01"
-            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md 
-                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+            min="0.01"
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md 
+                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
             placeholder="0.00"
+            disabled={isSubmitting}
           />
         </div>
 
         {/* Amount Paid */}
         <div>
           <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-            Amount Paid
+            Amount Paid ($)
           </label>
           <input
             type="number"
@@ -123,43 +202,85 @@ const AddLoanForm: React.FC<AddLoanFormProps> = ({ onSuccess }) => {
             value={formData.amountpaid}
             onChange={handleChange}
             step="0.01"
-            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md 
-                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-            placeholder="0.00 (optional)"
+            min="0"
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md 
+                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+            placeholder="0.00"
+            disabled={isSubmitting}
           />
         </div>
 
         {/* Amount Left */}
         <div>
           <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-            Amount Left
+            Amount Left ($)
           </label>
           <input
             type="number"
             name="amountleft"
-            value={formData.amountleft}
+            value={formData.amountleft || calculateAmountLeft()}
             onChange={handleChange}
             step="0.01"
-            className="w-full p-2 border border-gray-300 dark:border-gray-600 rounded-md 
-                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-            placeholder="0.00 (optional)"
+            min="0"
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md 
+                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+            placeholder="0.00"
+            disabled={isSubmitting}
           />
         </div>
 
-        {/* Submit */}
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-full bg-green-500 dark:bg-green-600 text-white py-2 px-4 rounded-md 
-                     hover:bg-green-600 dark:hover:bg-green-700 disabled:opacity-50"
-        >
-          {isSubmitting ? 'Adding...' : 'Add Loan'}
-        </button>
+        {/* Description */}
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+            Description
+          </label>
+          <textarea
+            name="description"
+            value={formData.description}
+            onChange={handleChange}
+            rows={3}
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md 
+                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+            placeholder="Optional loan description"
+            disabled={isSubmitting}
+          />
+        </div>
+
+        {/* Buttons */}
+        <div className="flex gap-3">
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="flex-1 bg-green-500 dark:bg-green-600 text-white py-3 px-4 rounded-md 
+                       hover:bg-green-600 dark:hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+          >
+            {isSubmitting && (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            )}
+            {isSubmitting ? (editingLoan ? 'Updating...' : 'Adding...') : (editingLoan ? 'Update Loan' : 'Add Loan')}
+          </button>
+
+          {onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={isSubmitting}
+              className="flex-1 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 py-3 px-4 rounded-md 
+                         hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 transition-colors"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
 
         {message && (
-          <p className={`text-center ${message.includes('successfully') ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+          <div className={`p-3 rounded-md text-center font-medium ${
+            messageType === 'success'
+              ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100'
+              : 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100'
+          }`}>
             {message}
-          </p>
+          </div>
         )}
       </form>
     </div>

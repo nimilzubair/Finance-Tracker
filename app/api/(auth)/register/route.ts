@@ -2,8 +2,8 @@
 import { NextRequest } from "next/server";
 import pool from "@/lib/db";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
-import { JWT_CONFIG } from '@/lib/jwt';
+import { SignJWT } from "jose";
+import { JWT_CONFIG } from "@/lib/jwt";
 
 export async function POST(request: NextRequest) {
   let client;
@@ -75,18 +75,16 @@ export async function POST(request: NextRequest) {
 
     const newUser = result.rows[0];
 
-    // ✅ FIXED: Remove unnecessary type assertions
-    const token = jwt.sign(
-      { 
-        userId: newUser.userid, 
-        username: newUser.username, 
-        email: newUser.email 
-      },
-      JWT_CONFIG.secret,
-      { 
-        expiresIn: JWT_CONFIG.expiresIn
-      }
-    );
+    // ✅ Generate JWT with jose
+    const secret = new TextEncoder().encode(JWT_CONFIG.secret);
+    const token = await new SignJWT({
+      userId: newUser.userid,
+      username: newUser.username,
+      email: newUser.email,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setExpirationTime(JWT_CONFIG.expiresIn) // e.g. "1h" or "7d"
+      .sign(secret);
 
     return Response.json(
       {
@@ -95,7 +93,7 @@ export async function POST(request: NextRequest) {
           userid: newUser.userid,
           username: newUser.username,
           email: newUser.email,
-          createdat: newUser.createdat
+          createdat: newUser.createdat,
         },
         token,
       },
@@ -103,19 +101,15 @@ export async function POST(request: NextRequest) {
     );
   } catch (error: any) {
     console.error("Registration error: ", error);
-    
-    // Handle specific database errors
-    if (error.code === '23505') { // Unique violation
+
+    if (error.code === "23505") {
       return Response.json(
         { error: "Username or email already exists." },
         { status: 409 }
       );
     }
-    
-    return Response.json(
-      { error: "Internal server error" }, 
-      { status: 500 }
-    );
+
+    return Response.json({ error: "Internal server error" }, { status: 500 });
   } finally {
     if (client) client.release();
   }

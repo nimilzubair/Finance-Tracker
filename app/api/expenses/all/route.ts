@@ -6,14 +6,23 @@ import jwt from "jsonwebtoken";
 const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
 function getUserIdFromRequest(request: NextRequest): number | null {
+  console.log("function: getUserIdFromRequest");
   try {
     const authHeader = request.headers.get("authorization");
-    if (!authHeader) return null;
+    if (!authHeader) {
+      console.log("Auth header not present");
+      return null;
+    }
     const token = authHeader.split(" ")[1];
-    if (!token) return null;
+    if (!token) {
+      console.log("Token not present");
+      return null;
+    }
     const decoded = jwt.verify(token, JWT_SECRET) as { userId: number };
+    console.log("Returning: ", decoded.userId);
     return decoded.userId;
   } catch {
+    console.log("Error occured in getUserIdFromRequest")
     return null;
   }
 }
@@ -49,6 +58,7 @@ export async function GET(request: NextRequest) {
     query += " ORDER BY paiddate DESC";
 
     const result = await client.query(query, params);
+    console.log("Returning Result: ", result.rows);
     return Response.json(result.rows);
   } catch (error) {
     console.error("Error fetching expenses:", error);
@@ -125,6 +135,7 @@ export async function POST(request: NextRequest) {
 
 // UPDATE EXPENSE
 export async function PUT(request: NextRequest) {
+  console.log("Update Expense");
   let client;
   try {
     const userId = getUserIdFromRequest(request);
@@ -132,7 +143,10 @@ export async function PUT(request: NextRequest) {
       return Response.json({ error: "User not authenticated" }, { status: 401 });
     }
 
-    const { expenseid, expensetitle, amount, paiddate, category } = await request.json();
+    const body = await request.json().catch(() => ({}));
+    const { expenseid, expensetitle, amount, paiddate, category } = body;
+
+    console.log("Expense Id: ", expenseid);
 
     if (!expenseid || !expensetitle || !amount || !paiddate) {
       return Response.json({ error: "All fields are required" }, { status: 400 });
@@ -142,7 +156,7 @@ export async function PUT(request: NextRequest) {
 
     // Verify the expense belongs to the user
     const check = await client.query(
-      'SELECT expenseid FROM expenses WHERE expenseid = $1 AND userid = $2',
+      "SELECT expenseid FROM expenses WHERE expenseid = $1 AND userid = $2",
       [expenseid, userId]
     );
 
@@ -169,6 +183,7 @@ export async function PUT(request: NextRequest) {
     if (client) client.release();
   }
 }
+                           
 
 // DELETE EXPENSE
 export async function DELETE(request: NextRequest) {

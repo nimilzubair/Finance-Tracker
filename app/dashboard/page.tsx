@@ -26,6 +26,7 @@ interface Expense {
   paiddate: string;
   createdat: string;
   category?: string;
+  description?: string;
 }
 
 interface Income {
@@ -34,29 +35,32 @@ interface Income {
   amount: number | string;
   income_date: string;
   createdat: string;
+  description?: string;
 }
 
 interface Loan {
-  loanid: number;
+  loanid?: number;
   loantitle: string;
-  totalamount: number;
-  amountpaid: number;
-  amountleft: number;
-  createdat: string;
+  totalamount: number | string;
+  amountpaid?: number | string;
+  amountleft?: number | string;
+  createdat?: string;
+  description?: string;
 }
 
 interface Installment {
-  installmentid: number;
+  installmentid?: number;
   installmenttitle: string;
-  totalamount: number;
-  total_paid: number;
-  remaining_amount: number;
-  payments_made: number;
+  totalamount: number | string;
+  total_paid?: number | string;
+  remaining_amount?: number | string;
+  payments_made?: number;
   startdate: string;
-  installmentdurationinmonths: number;
-  amountpermonth: number;
-  advancepaid: boolean;
-  advanceamount: number;
+  installmentdurationinmonths: number | string;
+  amountpermonth?: number | string;
+  advancepaid?: boolean;
+  advanceamount?: number | string;
+  description?: string;
 }
 
 interface UpcomingPayment {
@@ -66,11 +70,33 @@ interface UpcomingPayment {
   duedate: string;
 }
 
+interface EditingItem {
+  type: 'expense' | 'income' | 'loan' | 'installment';
+  data: Expense | Income | Loan | Installment;
+}
+
 // Icon components with fallback
 const BalanceIcon = () => <span>💰</span>;
 const IncomeIcon = () => <span>📈</span>;
 const ExpensesIcon = () => <span>📉</span>;
 const NetFlowIcon = () => <span>📊</span>;
+
+// Type guard functions
+const isExpense = (item: any): item is Expense => {
+  return item && typeof item.expensetitle === 'string';
+};
+
+const isLoan = (item: any): item is Loan => {
+  return item && typeof item.loantitle === 'string';
+};
+
+const isInstallment = (item: any): item is Installment => {
+  return item && typeof item.installmenttitle === 'string';
+};
+
+const isIncome = (item: any): item is Income => {
+  return item && typeof item.incometitle === 'string';
+};
 
 const Dashboard = () => {
   const { user, token } = useAuth();
@@ -106,7 +132,7 @@ const Dashboard = () => {
   const [loadingInstallments, setLoadingInstallments] = useState(false);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [editingItem, setEditingItem] = useState<{type: string; data: any} | null>(null);
+  const [editingItem, setEditingItem] = useState<EditingItem | null>(null);
 
   // Populate available years
   useEffect(() => {
@@ -337,9 +363,20 @@ const Dashboard = () => {
     }
   };
 
-  const handleEditItem = (type: string, data: any) => {
-    setEditingItem({ type, data });
-    handleSubTabChange('add');
+  const handleEditItem = (type: 'expense' | 'income' | 'loan' | 'installment', data: any) => {
+    // Validate the data type before setting
+    if (
+      (type === 'expense' && isExpense(data)) ||
+      (type === 'income' && isIncome(data)) ||
+      (type === 'loan' && isLoan(data)) ||
+      (type === 'installment' && isInstallment(data))
+    ) {
+      setEditingItem({ type, data });
+      handleSubTabChange('add');
+    } else {
+      console.error('Invalid data type for editing:', type, data);
+      setError('Invalid data for editing');
+    }
   };
 
   const handleCancelEdit = () => {
@@ -643,6 +680,17 @@ const Dashboard = () => {
                             </tr>
                           ))}
                         </tbody>
+                        <tfoot className="bg-gray-100 dark:bg-gray-700">
+                          <tr>
+                            <td colSpan={2} className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                              Total
+                            </td>
+                            <td className="px-6 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
+                              ${formatAmount(incomes.reduce((sum, income) => sum + (typeof income.amount === 'string' ? parseFloat(income.amount) : income.amount), 0))}
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   )}
@@ -651,7 +699,7 @@ const Dashboard = () => {
               {activeSubTab === 'add' && (
                 <div className="max-w-md mx-auto">
                   <AddIncomeForm 
-                    editingIncome={editingItem?.type === 'income' ? editingItem.data : null}
+                    editingIncome={editingItem?.type === 'income' && isIncome(editingItem.data) ? editingItem.data : null}
                     onSuccess={() => {
                       handleSubTabChange('view');
                       fetchAllIncomes();
@@ -802,6 +850,17 @@ const Dashboard = () => {
                             </tr>
                           ))}
                         </tbody>
+                        <tfoot className="bg-gray-100 dark:bg-gray-700">
+                          <tr>
+                            <td colSpan={2} className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                              Total
+                            </td>
+                            <td className="px-6 py-4 text-sm font-semibold text-red-600 dark:text-red-400">
+                              ${formatAmount(expenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0))}
+                            </td>
+                            <td colSpan={2}></td>
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   )}
@@ -810,7 +869,7 @@ const Dashboard = () => {
               {activeSubTab === 'add' && (
                 <div className="max-w-md mx-auto">
                   <AddExpenseForm 
-                    editingExpense={editingItem?.type === 'expense' ? editingItem.data : null}
+                    editingExpense={editingItem?.type === 'expense' && isExpense(editingItem.data) ? editingItem.data : null}
                     onSuccess={() => {
                       handleSubTabChange('view');
                       fetchAllExpenses();
@@ -924,7 +983,7 @@ const Dashboard = () => {
                             <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Total Amount</th>
                             <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Paid</th>
                             <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Remaining</th>
-                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                                                        <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -937,10 +996,10 @@ const Dashboard = () => {
                                 ${formatAmount(loan.totalamount)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 dark:text-green-400">
-                                ${formatAmount(loan.amountpaid)}
+                                ${formatAmount(loan.amountpaid || 0)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 dark:text-blue-400">
-                                ${formatAmount(loan.amountleft)}
+                                ${formatAmount(loan.amountleft || loan.totalamount)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm">
                                 <div className="flex gap-2">
@@ -951,7 +1010,7 @@ const Dashboard = () => {
                                     Edit
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteItem('loan', loan.loanid)}
+                                    onClick={() => handleDeleteItem('loan', loan.loanid!)}
                                     className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
                                   >
                                     Delete
@@ -961,6 +1020,27 @@ const Dashboard = () => {
                             </tr>
                           ))}
                         </tbody>
+                        <tfoot className="bg-gray-100 dark:bg-gray-700">
+                          <tr>
+                            <td className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                              Total
+                            </td>
+                            <td className="px-6 py-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                              ${formatAmount(loans.reduce((sum, loan) => sum + (typeof loan.totalamount === 'string' ? parseFloat(loan.totalamount) : loan.totalamount), 0))}
+                            </td>
+                            <td className="px-6 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
+                              ${formatAmount(loans.reduce((sum, loan) => sum + (typeof loan.amountpaid === 'string' ? parseFloat(loan.amountpaid) : (loan.amountpaid || 0)), 0))}
+                            </td>
+                            <td className="px-6 py-4 text-sm font-semibold text-blue-600 dark:text-blue-400">
+                              ${formatAmount(loans.reduce((sum, loan) => {
+                                const total = typeof loan.totalamount === 'string' ? parseFloat(loan.totalamount) : loan.totalamount;
+                                const paid = typeof loan.amountpaid === 'string' ? parseFloat(loan.amountpaid) : (loan.amountpaid || 0);
+                                return sum + (total - paid);
+                              }, 0))}
+                            </td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   )}
@@ -969,7 +1049,7 @@ const Dashboard = () => {
               {activeSubTab === 'add' && (
                 <div className="max-w-md mx-auto">
                   <AddLoanForm 
-                    editingLoan={editingItem?.type === 'loan' ? editingItem.data : null}
+                    editingLoan={editingItem?.type === 'loan' && isLoan(editingItem.data) ? editingItem.data : null}
                     onSuccess={() => {
                       handleSubTabChange('view');
                       fetchAllLoans();
@@ -1097,13 +1177,13 @@ const Dashboard = () => {
                                 ${formatAmount(inst.totalamount)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 dark:text-green-400">
-                                ${formatAmount(inst.total_paid)}
+                                ${formatAmount(inst.total_paid || 0)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 dark:text-blue-400">
-                                ${formatAmount(inst.remaining_amount)}
+                                ${formatAmount(inst.remaining_amount || inst.totalamount)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                                {inst.payments_made} of {inst.installmentdurationinmonths}
+                                {inst.payments_made || 0} of {inst.installmentdurationinmonths}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm">
                                 <div className="flex gap-2">
@@ -1114,7 +1194,7 @@ const Dashboard = () => {
                                     Edit
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteItem('installment', inst.installmentid)}
+                                    onClick={() => handleDeleteItem('installment', inst.installmentid!)}
                                     className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
                                   >
                                     Delete
@@ -1124,6 +1204,27 @@ const Dashboard = () => {
                             </tr>
                           ))}
                         </tbody>
+                        <tfoot className="bg-gray-100 dark:bg-gray-700">
+                          <tr>
+                            <td className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                              Total
+                            </td>
+                            <td className="px-6 py-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                              ${formatAmount(installments.reduce((sum, inst) => sum + (typeof inst.totalamount === 'string' ? parseFloat(inst.totalamount) : inst.totalamount), 0))}
+                            </td>
+                            <td className="px-6 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
+                              ${formatAmount(installments.reduce((sum, inst) => sum + (typeof inst.total_paid === 'string' ? parseFloat(inst.total_paid) : (inst.total_paid || 0)), 0))}
+                            </td>
+                            <td className="px-6 py-4 text-sm font-semibold text-blue-600 dark:text-blue-400">
+                              ${formatAmount(installments.reduce((sum, inst) => {
+                                const total = typeof inst.totalamount === 'string' ? parseFloat(inst.totalamount) : inst.totalamount;
+                                const paid = typeof inst.total_paid === 'string' ? parseFloat(inst.total_paid) : (inst.total_paid || 0);
+                                return sum + (total - paid);
+                              }, 0))}
+                            </td>
+                            <td colSpan={2}></td>
+                          </tr>
+                        </tfoot>
                       </table>
                     </div>
                   )}
@@ -1132,7 +1233,7 @@ const Dashboard = () => {
               {activeSubTab === 'add' && (
                 <div className="max-w-md mx-auto">
                   <AddInstallmentForm 
-                    editingInstallment={editingItem?.type === 'installment' ? editingItem.data : null}
+                    editingInstallment={editingItem?.type === 'installment' && isInstallment(editingItem.data) ? editingItem.data : null}
                     onSuccess={() => {
                       handleSubTabChange('view');
                       fetchAllInstallments();

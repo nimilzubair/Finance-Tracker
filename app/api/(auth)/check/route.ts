@@ -1,7 +1,7 @@
-// app/api/(auth)/check/route.ts - FIXED
+// app/api/(auth)/check/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import jwt from "jsonwebtoken";
-import { JWT_CONFIG } from '@/lib/jwt';
+import { jwtVerify } from "jose";
+import { JWT_CONFIG } from "@/lib/jwt";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,23 +10,23 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "No token provided" }, { status: 401 });
     }
 
-    const token = authHeader.substring(7); // Consistent extraction
+    const token = authHeader.substring(7);
 
-    // Verify token
-    const decoded = jwt.verify(token, JWT_CONFIG.secret) as any; // Use any for flexibility
+    // ✅ Verify token with jose
+    const secret = new TextEncoder().encode(JWT_CONFIG.secret);
+    const { payload } = await jwtVerify(token, secret);
 
-    // ✅ return consistent user object
     return NextResponse.json({
       success: true,
       user: {
-        userid: decoded.userId || decoded.id,
-        username: decoded.username,
-        email: decoded.email,
+        userid: payload.userId,
+        username: payload.username,
+        email: payload.email,
       },
     });
   } catch (err: any) {
     return NextResponse.json(
-      { error: err.name === "TokenExpiredError" ? "Token expired" : "Invalid token" },
+      { error: err.code === "ERR_JWT_EXPIRED" ? "Token expired" : "Invalid token" },
       { status: 401 }
     );
   }
