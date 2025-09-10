@@ -162,7 +162,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const { loanid, loantitle, totalamount, amountpaid, amountleft } = await request.json();
-
+    console.log("Loan id: ", loanid);
     if (!loanid || !loantitle || totalamount === undefined) {
       return Response.json({ error: "Loan ID, title and total amount are required" }, { status: 400 });
     }
@@ -181,7 +181,7 @@ export async function PUT(request: NextRequest) {
 
     const result = await client.query(
       `UPDATE loans 
-       SET loantitle = $1, totalamount = $2, amountpaid = $3, amountleft = $4, updatedat = NOW()
+       SET loantitle = $1, totalamount = $2, amountpaid = $3, amountleft = $4 
        WHERE loanid = $5 AND userid = $6 
        RETURNING *`,
       [loantitle, totalamount, amountpaid, amountleft, loanid, userId]
@@ -194,6 +194,48 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     console.error("Error updating loan:", error);
     return Response.json({ error: "Failed to update loan" }, { status: 500 });
+  } finally {
+    if (client) client.release();
+  }
+}
+
+// DELETE LOAN - Accepts ID from body
+export async function DELETE(request: NextRequest) {
+  let client;
+  try {
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) {
+      return Response.json({ error: "User not authenticated" }, { status: 401 });
+    }
+
+    const { loanid } = await request.json();
+
+    if (!loanid) {
+      return Response.json({ error: "Loan ID is required" }, { status: 400 });
+    }
+
+    client = await pool.connect();
+    const check = await client.query(
+      'SELECT loanid FROM loans WHERE loanid = $1 AND userid = $2',
+      [loanid, userId]
+    );
+
+    if (check.rows.length === 0) {
+      return Response.json({ error: "Loan not found or unauthorized" }, { status: 404 });
+    }
+
+    await client.query(
+      'DELETE FROM loans WHERE loanid = $1 AND userid = $2',
+      [loanid, userId]
+    );
+
+    return Response.json(
+      { message: "Loan deleted successfully" },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Error deleting loan:", error);
+    return Response.json({ error: "Failed to delete loan" }, { status: 500 });
   } finally {
     if (client) client.release();
   }

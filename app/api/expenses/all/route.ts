@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     client = await pool.connect();
 
     let query = `
-      SELECT expensetitle, amount, paiddate, createdat
+      SELECT expenseid, expensetitle, amount, paiddate, createdat, category
       FROM expenses
       WHERE userid = $1
     `;
@@ -67,7 +67,6 @@ export async function GET(request: NextRequest) {
     if (client) client.release();
   }
 }
-
 // POST - Add new expense
 export async function POST(request: NextRequest) {
   console.log("ADD NEW EXPENSE");
@@ -115,7 +114,7 @@ export async function POST(request: NextRequest) {
     );
 
     const newExpense = result.rows[0];
-
+console.log("retunring: ", result.rows);
     return Response.json({
       message: "Expense added successfully",
       expense: newExpense
@@ -132,22 +131,21 @@ export async function POST(request: NextRequest) {
   }
 }
 // Add these to your existing expenses route
-
-// UPDATE EXPENSE
+//update expense
 export async function PUT(request: NextRequest) {
-  console.log("Update Expense");
   let client;
   try {
-    const userId = getUserIdFromRequest(request);
+    const userId = await getUserIdFromRequest(request);
     if (!userId) {
       return Response.json({ error: "User not authenticated" }, { status: 401 });
     }
 
-    const body = await request.json().catch(() => ({}));
-    const { expenseid, expensetitle, amount, paiddate, category } = body;
-
+    const { expenseid, expensetitle, amount, paiddate, category } = await request.json();
     console.log("Expense Id: ", expenseid);
-
+    console.log("Expense Title: ", expensetitle);
+    console.log("Expense Amount: ", amount);
+    console.log("PaidDate: ", paiddate);
+    console.log("Category: ", category);
     if (!expenseid || !expensetitle || !amount || !paiddate) {
       return Response.json({ error: "All fields are required" }, { status: 400 });
     }
@@ -159,14 +157,14 @@ export async function PUT(request: NextRequest) {
       "SELECT expenseid FROM expenses WHERE expenseid = $1 AND userid = $2",
       [expenseid, userId]
     );
-
+    console.log("Check: ", check);
     if (check.rows.length === 0) {
       return Response.json({ error: "Expense not found or unauthorized" }, { status: 404 });
     }
 
     const result = await client.query(
       `UPDATE expenses 
-       SET expensetitle = $1, amount = $2, paiddate = $3, category = $4, updatedat = NOW()
+       SET expensetitle = $1, amount = $2, paiddate = $3, category = $4 
        WHERE expenseid = $5 AND userid = $6 
        RETURNING *`,
       [expensetitle, amount, paiddate, category, expenseid, userId]
@@ -183,19 +181,18 @@ export async function PUT(request: NextRequest) {
     if (client) client.release();
   }
 }
-                           
 
-// DELETE EXPENSE
+// DELETE EXPENSE - Accepts ID from body
 export async function DELETE(request: NextRequest) {
   let client;
   try {
-    const userId = getUserIdFromRequest(request);
+    const userId = await getUserIdFromRequest(request);
     if (!userId) {
       return Response.json({ error: "User not authenticated" }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const expenseid = searchParams.get('id');
+    // Parse the request body to get the expense ID
+    const { expenseid } = await request.json();
 
     if (!expenseid) {
       return Response.json({ error: "Expense ID is required" }, { status: 400 });

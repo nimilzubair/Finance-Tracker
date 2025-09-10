@@ -1,4 +1,4 @@
-// app/api/installments/payment/route.ts - No changes needed for filtering
+// app/api/installments/payment/route.ts - ENHANCED with validation
 import { NextRequest } from "next/server";
 import pool from "@/lib/db";
 import jwt from "jsonwebtoken";
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "User not authenticated" }, { status: 401 });
     }
 
-    const { installmentid, amountpaid, paiddate } = await request.json();
+    const { installmentid, amountpaid, paiddate, is_advance } = await request.json();
 
     if (!installmentid || !amountpaid || !paiddate) {
       return Response.json(
@@ -43,24 +43,66 @@ export async function POST(request: NextRequest) {
 
     client = await pool.connect();
 
-    // Only insert payment for installments that belong to this user
-    const check = await client.query(
-      `SELECT installmentid FROM installments WHERE installmentid = $1 AND userid = $2`,
+    // Check if installment exists and belongs to user
+    const installmentCheck = await client.query(
+      `SELECT installmentid, totalamount, advancepaid, advanceamount 
+       FROM installments WHERE installmentid = $1 AND userid = $2`,
       [installmentid, userId]
     );
-    if (check.rows.length === 0) {
+    
+    if (installmentCheck.rows.length === 0) {
       return Response.json({ error: "Installment not found or unauthorized" }, { status: 403 });
     }
 
-    const result = await client.query(
-      `INSERT INTO installment_details 
-       (installmentid, amountpaid, paiddate, createdat) 
-       VALUES ($1, $2, $3, NOW()) RETURNING *`,
-      [installmentid, amountNum, paiddate]
+    const installment = installmentCheck.rows[0];
+
+    // Check if this is an advance payment and if advance was already paid
+    if (is_advance && installment.advancepaid) {
+      return Response.json({ error: "Advance payment already made" }, { status: 400 });
+    }
+
+    // Get total paid so far
+    const totalPaidResult = await client.query(
+      `SELECT COALESCE(SUM(amountpaid), 0) as total_paid 
+       FROM installment_details WHERE installmentid = $1`,
+      [installmentid]
     );
 
+    const totalPaid = parseFloat(totalPaidResult.rows[0].total_paid);
+    const remainingAmount = installment.totalamount - totalPaid;
+
+    // Validate payment doesn't exceed remaining amount
+    if (amountNum > remainingAmount) {
+      return Response.json(
+        { error: `Payment exceeds remaining amount of $${remainingAmount.toFixed(2)}` },
+        { status: 400 }
+      );
+    }
+
+    // Record the payment
+    const result = await client.query(
+      `INSERT INTO installment_details 
+       (installmentid, amountpaid, paiddate, is_advance, createdat) 
+       VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
+      [installmentid, amountNum, paiddate, is_advance || false]
+    );
+
+    // If this was an advance payment, update the installment record
+    if (is_advance) {
+      await client.query(
+        `UPDATE installments 
+         SET advancepaid = true, advanceamount = $1 
+         WHERE installmentid = $2`,
+        [amountNum, installmentid]
+      );
+    }
+
     return Response.json(
-      { message: "Payment recorded successfully", payment: result.rows[0] },
+      { 
+        message: "Payment recorded successfully", 
+        payment: result.rows[0],
+        remaining_amount: remainingAmount - amountNum
+      },
       { status: 201 }
     );
   } catch (error) {

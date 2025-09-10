@@ -140,25 +140,22 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// DELETE INCOME
+// DELETE INCOME - Accepts ID from body
 export async function DELETE(request: NextRequest) {
   let client;
   try {
-    const userId = getUserIdFromRequest(request);
+    const userId = await getUserIdFromRequest(request);
     if (!userId) {
       return Response.json({ error: "User not authenticated" }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const incomeid = searchParams.get('id');
+    const { incomeid } = await request.json();
 
     if (!incomeid) {
       return Response.json({ error: "Income ID is required" }, { status: 400 });
     }
 
     client = await pool.connect();
-
-    // Verify the income belongs to the user
     const check = await client.query(
       'SELECT incomeid FROM income WHERE incomeid = $1 AND userid = $2',
       [incomeid, userId]

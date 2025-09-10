@@ -101,26 +101,28 @@ const isIncome = (item: any): item is Income => {
 const Dashboard = () => {
   const { user, token } = useAuth();
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
-  const [activeTab, setActiveTab] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('tab') || 'overview';
-    }
-    return 'overview';
-  });
-  const [activeSubTab, setActiveSubTab] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('subtab') || '';
-    }
-    return '';
-  });
-  
-  // Add these state variables for filters
+
+  // ✅ Start with stable defaults so server and client match
+  const [activeTab, setActiveTab] = useState<string>('overview');
+  const [activeSubTab, setActiveSubTab] = useState<string>('');
+
+  // ✅ Sync with URL after the component mounts (client only)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const urlTab = params.get('tab');
+    const urlSubTab = params.get('subtab');
+
+    if (urlTab) setActiveTab(urlTab);
+    if (urlSubTab) setActiveSubTab(urlSubTab);
+  }, []);
+
+
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
-  
+
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -222,7 +224,8 @@ const Dashboard = () => {
         month: selectedMonth.toString(),
         year: selectedYear.toString()
       });
-      
+      console.log("Params month: ", params.get("month"));
+      console.log("Params year: ", params.get("year"));
       const res = await makeAuthenticatedRequest(`/api/expenses/all?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -310,58 +313,68 @@ const Dashboard = () => {
     }
   };
 
-  const handleDeleteItem = async (type: string, id: number) => {
-    if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
+  const handleDeleteItem = async (type: string, id: number | undefined) => {
+  if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
 
-    try {
-      let endpoint = '';
+  try {
+    let endpoint = '';
+    switch (type) {
+      case 'expense':
+        endpoint = '/api/expenses/all';
+        break;
+      case 'income':
+        endpoint = '/api/income';
+        break;
+      case 'loan':
+        endpoint = '/api/loans';
+        break;
+      case 'installment':
+        endpoint = '/api/installments';
+        break;
+      default:
+        return;
+    }
+
+    const res = await makeAuthenticatedRequest(endpoint, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        // Send the ID in the request body based on the type
+        expenseid: type === 'expense' ? id : undefined,
+        incomeid: type === 'income' ? id : undefined,
+        loanid: type === 'loan' ? id : undefined,
+        installmentid: type === 'installment' ? id : undefined,
+      }),
+    });
+
+    if (res.ok) {
+      // Refresh the data
       switch (type) {
         case 'expense':
-          endpoint = `/api/expenses/all?id=${id}`;
+          fetchAllExpenses();
           break;
         case 'income':
-          endpoint = `/api/income?id=${id}`;
+          fetchAllIncomes();
           break;
         case 'loan':
-          endpoint = `/api/loans?id=${id}`;
+          fetchAllLoans();
           break;
         case 'installment':
-          endpoint = `/api/installments?id=${id}`;
+          fetchAllInstallments();
           break;
-        default:
-          return;
       }
-
-      const res = await makeAuthenticatedRequest(endpoint, {
-        method: 'DELETE'
-      });
-
-      if (res.ok) {
-        // Refresh the data
-        switch (type) {
-          case 'expense':
-            fetchAllExpenses();
-            break;
-          case 'income':
-            fetchAllIncomes();
-            break;
-          case 'loan':
-            fetchAllLoans();
-            break;
-          case 'installment':
-            fetchAllInstallments();
-            break;
-        }
-        fetchSummaryData();
-        setError(null);
-      } else {
-        throw new Error(`Failed to delete ${type}`);
-      }
-    } catch (err: any) {
-      console.error(`Error deleting ${type}:`, err);
-      setError(`Failed to delete ${type}`);
+      fetchSummaryData();
+      setError(null);
+    } else {
+      throw new Error(`Failed to delete ${type}`);
     }
-  };
+  } catch (err: any) {
+    console.error(`Error deleting ${type}:`, err);
+    setError(`Failed to delete ${type}`);
+  }
+};
 
   const handleEditItem = (type: 'expense' | 'income' | 'loan' | 'installment', data: any) => {
     // Validate the data type before setting
@@ -650,8 +663,8 @@ const Dashboard = () => {
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                          {incomes.map((income) => (
-                            <tr key={income.incomeid} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                          {incomes.map((income, index) => (
+                            <tr key={income.incomeid ?? `income-${index}`} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
                                 {income.incometitle}
                               </td>
@@ -817,8 +830,8 @@ const Dashboard = () => {
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                          {expenses.map((exp) => (
-                            <tr key={exp.expenseid} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                          {expenses.map((exp, index) => (
+                            <tr key={exp.expenseid ?? `expense-${index}`} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
                                 {exp.expensetitle}
                               </td>
@@ -987,8 +1000,8 @@ const Dashboard = () => {
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                          {loans.map((loan) => (
-                            <tr key={loan.loanid} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                          {loans.map((loan, index) => (
+                            <tr key={loan.loanid ?? `loan-${index}`} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
                                 {loan.loantitle}
                               </td>
@@ -1168,8 +1181,8 @@ const Dashboard = () => {
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                          {installments.map((inst) => (
-                            <tr key={inst.installmentid} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                          {installments.map((inst, index) => (
+                            <tr key={inst.installmentid ?? `installment-${index}`} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-gray-100">
                                 {inst.installmenttitle}
                               </td>

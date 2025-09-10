@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 
 export const JWT_CONFIG = {
   secret: process.env.JWT_SECRET || "your-secret-key",
-  expiresIn: '7d' // Remove the type assertion here
+  expiresIn: '7d' as const 
 };
 
 export interface DecodedToken {

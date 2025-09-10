@@ -89,92 +89,110 @@ const AddExpenseForm = ({ editingExpense, onSuccess, onCancel }: AddExpenseFormP
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  e.preventDefault();
 
-    if (!user || !token) {
-      console.warn('[AddExpenseForm] No user or token found.');
-      setMessage('Please log in to add expenses');
-      setMessageType('error');
-      return;
-    }
+  if (!user || !token) {
+    console.warn('[AddExpenseForm] No user or token found.');
+    setMessage('Please log in to add expenses');
+    setMessageType('error');
+    return;
+  }
 
-    if (!validateForm()) {
-      console.warn('[AddExpenseForm] Validation failed.');
-      return;
-    }
+  if (!validateForm()) {
+    console.warn('[AddExpenseForm] Validation failed.');
+    return;
+  }
 
-    setIsSubmitting(true);
-    setMessage('');
+  setIsSubmitting(true);
+  setMessage('');
 
-    try {
-      const expenseData = {
-        expenseid: formData.expenseid,
-        expensetitle: formData.expensetitle.trim(),
-        amount: parseFloat(formData.amount),
-        paiddate: formData.paiddate,
-        category: formData.category || undefined
-      };
+  try {
+    // Prepare data for server - convert empty strings to undefined for optional fields
+    const expenseData = {
+      expenseid: formData.expenseid,
+      expensetitle: formData.expensetitle.trim(),
+      amount: parseFloat(formData.amount),
+      paiddate: formData.paiddate,
+      category: formData.category?.trim() || undefined,
+    };
 
-      const method = editingExpense ? 'PUT' : 'POST';
-      const url = '/api/expenses/all';
-
-      console.log(`[AddExpenseForm] Submitting ${method} request with data:`, expenseData);
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(expenseData),
-      });
-
-      let data;
-      try {
-        data = await response.json();
-      } catch (jsonError) {
-        if (response.ok) {
-          data = { success: true };
-        } else {
-          throw new Error('Invalid server response');
-        }
+    let requestData;
+    
+    if (editingExpense) {
+      // For edits, we MUST have an expenseid - if it's undefined, that's an error
+      if (!expenseData.expenseid) {
+        throw new Error('Expense ID is required for editing');
       }
-
-      console.log('[AddExpenseForm] Server response:', data);
-
-      if (response.ok) {
-        setMessage(editingExpense ? 'Expense updated successfully!' : 'Expense added successfully!');
-        setMessageType('success');
-
-        if (!editingExpense) {
-          console.log('[AddExpenseForm] Resetting form after add');
-          setFormData({
-            expenseid: undefined,
-            expensetitle: '',
-            amount: '',
-            paiddate: new Date().toISOString().split('T')[0],
-            category: ''
-          });
-        }
-
-        setTimeout(() => {
-          if (onSuccess) onSuccess();
-        }, 1500);
-      } else {
-        throw new Error(data.error || data.message || `Server error: ${response.status}`);
-      }
-    } catch (error) {
-      console.error('[AddExpenseForm] Error saving expense:', error);
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : `Failed to ${editingExpense ? 'update' : 'add'} expense. Please try again.`
+      requestData = expenseData;
+    } else {
+      // For new expenses, remove the expenseid field entirely if it's undefined
+      requestData = Object.fromEntries(
+        Object.entries(expenseData).filter(([key, value]) => 
+          key !== 'expenseid' || value !== undefined
+        )
       );
-      setMessageType('error');
-    } finally {
-      setIsSubmitting(false);
     }
-  };
+
+    const method = editingExpense ? 'PUT' : 'POST';
+    const url = '/api/expenses/all';
+
+    console.log(`[AddExpenseForm] Submitting ${method} request with data:`, requestData);
+
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(requestData),
+    });
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (jsonError) {
+      if (response.ok) {
+        data = { success: true };
+      } else {
+        throw new Error('Invalid server response');
+      }
+    }
+
+    console.log('[AddExpenseForm] Server response:', data);
+
+    if (response.ok) {
+      setMessage(editingExpense ? 'Expense updated successfully!' : 'Expense added successfully!');
+      setMessageType('success');
+
+      if (!editingExpense) {
+        console.log('[AddExpenseForm] Resetting form after add');
+        setFormData({
+          expenseid: undefined,
+          expensetitle: '',
+          amount: '',
+          paiddate: new Date().toISOString().split('T')[0],
+          category: ''
+        });
+      }
+
+      setTimeout(() => {
+        if (onSuccess) onSuccess();
+      }, 1500);
+    } else {
+      throw new Error(data.error || data.message || `Server error: ${response.status}`);
+    }
+  } catch (error) {
+    console.error('[AddExpenseForm] Error saving expense:', error);
+    setMessage(
+      error instanceof Error
+        ? error.message
+        : `Failed to ${editingExpense ? 'update' : 'add'} expense. Please try again.`
+    );
+    setMessageType('error');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   if (loadingAuth) {
     console.log('[AddExpenseForm] Loading auth...');
