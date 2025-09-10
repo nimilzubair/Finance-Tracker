@@ -1,4 +1,4 @@
-// components/AddInstallmentForm.tsx - Updated with editing support
+// components/AddInstallmentForm.tsx - ENHANCED with payment frequencies
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -10,12 +10,16 @@ interface Installment {
   total_paid?: number | string;
   remaining_amount?: number | string;
   payments_made?: number;
+  periods_remaining?: number;
   startdate: string;
   installmentdurationinmonths: number | string;
+  payment_frequency?: string;
+  payment_interval_days?: number | string;
   amountpermonth?: number | string;
   advancepaid?: boolean;
   advanceamount?: number | string;
   description?: string;
+  status?: string;
 }
 
 interface AddInstallmentFormProps {
@@ -24,29 +28,52 @@ interface AddInstallmentFormProps {
   onCancel?: () => void;
 }
 
-const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({ editingInstallment, onSuccess, onCancel }) => {
+const paymentFrequencyOptions = [
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'bi-weekly', label: 'Bi-Weekly (Every 2 weeks)' },
+  { value: 'quarterly', label: 'Quarterly (Every 3 months)' },
+  { value: 'yearly', label: 'Yearly' },
+  { value: 'custom', label: 'Custom Interval' }
+];
+
+const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({ 
+  editingInstallment, 
+  onSuccess, 
+  onCancel 
+}) => {
   const { user, token } = useAuth();
   const [formData, setFormData] = useState({
     installmenttitle: '',
     startdate: new Date().toISOString().split('T')[0],
     installmentdurationinmonths: '',
-    amountpermonth: '',
+    payment_frequency: 'monthly',
+    payment_interval_days: '',
     totalamount: '',
     advancepaid: false,
     advanceamount: '',
     description: ''
   });
+  
+  const [calculatedValues, setCalculatedValues] = useState({
+    amountPerPeriod: 0,
+    totalPeriods: 0,
+    netAmount: 0
+  });
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [messageType, setMessageType] = useState<'success' | 'error'>('success');
 
+  // Load editing data
   useEffect(() => {
     if (editingInstallment) {
       setFormData({
         installmenttitle: editingInstallment.installmenttitle,
         startdate: editingInstallment.startdate.split('T')[0],
         installmentdurationinmonths: editingInstallment.installmentdurationinmonths.toString(),
-        amountpermonth: editingInstallment.amountpermonth?.toString() || '',
+        payment_frequency: editingInstallment.payment_frequency || 'monthly',
+        payment_interval_days: editingInstallment.payment_interval_days?.toString() || '',
         totalamount: editingInstallment.totalamount.toString(),
         advancepaid: editingInstallment.advancepaid || false,
         advanceamount: editingInstallment.advanceamount?.toString() || '',
@@ -55,7 +82,56 @@ const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({ editingInstallm
     }
   }, [editingInstallment]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  // Calculate payment amounts based on frequency
+  useEffect(() => {
+    const total = parseFloat(formData.totalamount) || 0;
+    const advance = formData.advancepaid ? (parseFloat(formData.advanceamount) || 0) : 0;
+    const netAmount = total - advance;
+    const durationMonths = parseInt(formData.installmentdurationinmonths) || 1;
+    
+    let totalPeriods = durationMonths;
+    let amountPerPeriod = 0;
+    
+    if (netAmount > 0) {
+      switch (formData.payment_frequency) {
+        case 'monthly':
+          totalPeriods = durationMonths;
+          amountPerPeriod = netAmount / totalPeriods;
+          break;
+        case 'weekly':
+          totalPeriods = Math.ceil((durationMonths * 30) / 7);
+          amountPerPeriod = netAmount / totalPeriods;
+          break;
+        case 'bi-weekly':
+          totalPeriods = Math.ceil((durationMonths * 30) / 14);
+          amountPerPeriod = netAmount / totalPeriods;
+          break;
+        case 'quarterly':
+          totalPeriods = Math.ceil(durationMonths / 3);
+          amountPerPeriod = netAmount / totalPeriods;
+          break;
+        case 'yearly':
+          totalPeriods = Math.ceil(durationMonths / 12);
+          amountPerPeriod = netAmount / totalPeriods;
+          break;
+        case 'custom':
+          const intervalDays = parseInt(formData.payment_interval_days) || 30;
+          totalPeriods = Math.ceil((durationMonths * 30) / intervalDays);
+          amountPerPeriod = netAmount / totalPeriods;
+          break;
+        default:
+          amountPerPeriod = netAmount / totalPeriods;
+      }
+    }
+    
+    setCalculatedValues({
+      amountPerPeriod: amountPerPeriod,
+      totalPeriods: totalPeriods,
+      netAmount: netAmount
+    });
+  }, [formData.totalamount, formData.advancepaid, formData.advanceamount, formData.installmentdurationinmonths, formData.payment_frequency, formData.payment_interval_days]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
     setFormData({
       ...formData,
@@ -67,11 +143,9 @@ const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({ editingInstallm
     }
   };
 
-  const calculateMonthlyAmount = () => {
-    const total = parseFloat(formData.totalamount) || 0;
-    const duration = parseInt(formData.installmentdurationinmonths) || 1;
-    const advance = parseFloat(formData.advanceamount) || 0;
-    return ((total - advance) / duration).toFixed(2);
+  const getFrequencyLabel = () => {
+    const option = paymentFrequencyOptions.find(opt => opt.value === formData.payment_frequency);
+    return option ? option.label : 'Monthly';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -88,9 +162,14 @@ const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({ editingInstallm
     try {
       const totalAmount = parseFloat(formData.totalamount);
       const duration = parseInt(formData.installmentdurationinmonths);
-      const monthlyAmount = parseFloat(formData.amountpermonth || calculateMonthlyAmount());
-      const advanceAmount = parseFloat(formData.advanceamount || '0');
+      const advanceAmount = formData.advancepaid ? (parseFloat(formData.advanceamount) || 0) : 0;
+      const intervalDays = formData.payment_frequency === 'custom' ? parseInt(formData.payment_interval_days) : null;
 
+      // Validation
+      if (!formData.installmenttitle.trim()) {
+        throw new Error('Plan title is required');
+      }
+      
       if (isNaN(totalAmount) || totalAmount <= 0) {
         throw new Error('Total amount must be a positive number');
       }
@@ -99,23 +178,24 @@ const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({ editingInstallm
         throw new Error('Duration must be a positive number of months');
       }
 
-      if (isNaN(monthlyAmount) || monthlyAmount <= 0) {
-        throw new Error('Monthly amount must be a positive number');
-      }
-
       if (advanceAmount < 0) {
         throw new Error('Advance amount cannot be negative');
       }
 
-      if (advanceAmount > totalAmount) {
-        throw new Error('Advance amount cannot exceed total amount');
+      if (advanceAmount >= totalAmount) {
+        throw new Error('Advance amount must be less than total amount');
+      }
+
+      if (formData.payment_frequency === 'custom' && (!intervalDays || intervalDays <= 0)) {
+        throw new Error('Custom frequency requires valid interval days');
       }
 
       const installmentData = {
         installmenttitle: formData.installmenttitle.trim(),
         startdate: formData.startdate,
         installmentdurationinmonths: duration,
-        amountpermonth: monthlyAmount,
+        payment_frequency: formData.payment_frequency,
+        payment_interval_days: intervalDays,
         totalamount: totalAmount,
         advancepaid: formData.advancepaid,
         advanceamount: advanceAmount,
@@ -124,9 +204,7 @@ const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({ editingInstallm
       };
 
       const method = editingInstallment ? 'PUT' : 'POST';
-      const url = editingInstallment ? `/api/installments?id=${editingInstallment.installmentid}` : '/api/installments';
-
-      const response = await fetch(url, {
+      const response = await fetch('/api/installments', {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -146,7 +224,8 @@ const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({ editingInstallm
             installmenttitle: '',
             startdate: new Date().toISOString().split('T')[0],
             installmentdurationinmonths: '',
-            amountpermonth: '',
+            payment_frequency: 'monthly',
+            payment_interval_days: '',
             totalamount: '',
             advancepaid: false,
             advanceamount: '',
@@ -230,45 +309,70 @@ const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({ editingInstallm
           </div>
         </div>
 
-        {/* Monthly + total */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-              Monthly Amount ($) *
-            </label>
-            <input
-              type="number"
-              name="amountpermonth"
-              value={formData.amountpermonth || calculateMonthlyAmount()}
-              onChange={handleChange}
-              required
-              step="0.01"
-              min="0.01"
-              className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md 
-                         bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
-              placeholder="0.00"
-              disabled={isSubmitting}
-            />
-          </div>
+        {/* Payment Frequency */}
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+            Payment Frequency *
+          </label>
+          <select
+            name="payment_frequency"
+            value={formData.payment_frequency}
+            onChange={handleChange}
+            required
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md 
+                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+            disabled={isSubmitting}
+          >
+            {paymentFrequencyOptions.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
+        {/* Custom interval days */}
+        {formData.payment_frequency === 'custom' && (
           <div>
             <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
-              Total Amount ($) *
+              Payment Interval (Days) *
             </label>
             <input
               type="number"
-              name="totalamount"
-              value={formData.totalamount}
+              name="payment_interval_days"
+              value={formData.payment_interval_days}
               onChange={handleChange}
               required
-              step="0.01"
-              min="0.01"
+              min="1"
               className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md 
                          bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
-              placeholder="0.00"
+              placeholder="30"
               disabled={isSubmitting}
             />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              How many days between each payment
+            </p>
           </div>
+        )}
+
+        {/* Total amount */}
+        <div>
+          <label className="block text-sm font-medium mb-1 text-gray-700 dark:text-gray-300">
+            Total Amount ($) *
+          </label>
+          <input
+            type="number"
+            name="totalamount"
+            value={formData.totalamount}
+            onChange={handleChange}
+            required
+            step="0.01"
+            min="0.01"
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-md 
+                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500"
+            placeholder="0.00"
+            disabled={isSubmitting}
+          />
         </div>
 
         {/* Advance toggle */}
@@ -305,6 +409,40 @@ const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({ editingInstallm
               placeholder="0.00"
               disabled={isSubmitting}
             />
+          </div>
+        )}
+
+        {/* Payment calculation preview */}
+        {parseFloat(formData.totalamount) > 0 && parseInt(formData.installmentdurationinmonths) > 0 && (
+          <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">Payment Breakdown</h4>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Payment Frequency:</span>
+                <p className="font-medium text-gray-900 dark:text-gray-100">{getFrequencyLabel()}</p>
+              </div>
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Amount per Payment:</span>
+                <p className="font-medium text-blue-600 dark:text-blue-400">
+                  ${calculatedValues.amountPerPeriod.toFixed(2)}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Total Payments:</span>
+                <p className="font-medium text-gray-900 dark:text-gray-100">{calculatedValues.totalPeriods}</p>
+              </div>
+              <div>
+                <span className="text-gray-600 dark:text-gray-400">Net Amount:</span>
+                <p className="font-medium text-gray-900 dark:text-gray-100">
+                  ${calculatedValues.netAmount.toFixed(2)}
+                </p>
+              </div>
+            </div>
+            {formData.payment_frequency === 'custom' && formData.payment_interval_days && (
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-2">
+                Payment every {formData.payment_interval_days} days
+              </p>
+            )}
           </div>
         )}
 
