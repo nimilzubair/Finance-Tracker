@@ -85,13 +85,13 @@ export async function GET(request: NextRequest) {
     return Response.json(summaryData, { status: 200 });
 
   } catch (error) {
-    console.error("Database error in summary API:", error);
-    return Response.json(
-      { error: "Failed to fetch summary data",
-        details: error.message },
-      { status: 500 }
-    );
-  } finally {
+  console.error("Error fetching summary:", error);
+  const details = error instanceof Error ? error.message : String(error);
+  return Response.json(
+    { error: "Failed to fetch summary data", details },
+    { status: 500 }
+  );
+} finally {
     if (client) client.release();
   }
 }
