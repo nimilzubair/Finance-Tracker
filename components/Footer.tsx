@@ -1,13 +1,15 @@
-import React from 'react'
+import React from 'react';
 
 const Footer = () => {
   return (
-    <footer className="fixed bottom-0 left-0 w-full h-16 footer sm:footer-horizontal footer-center bg-base-300 text-base-content p-4">
-    <aside>
-        <p>Copyright © {new Date().getFullYear()} - All right reserved</p>
-    </aside>
+    <footer className="footer footer-center p-4 bg-gray-800 text-gray-200 fixed bottom-0 left-0 right-0 z-40">
+      <aside>
+        <p className="text-sm">
+          Copyright © {new Date().getFullYear()} Finance Tracker - All rights reserved
+        </p>
+      </aside>
     </footer>
-  )
-}
+  );
+};
 
-export default Footer
+export default Footer;

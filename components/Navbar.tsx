@@ -3,7 +3,7 @@ import Link from 'next/link';
 
 const Navbar = () => {
   return (
-    <div className="navbar bg-gray-900 text-white shadow-lg">
+    <div className="navbar bg-gray-900 text-white shadow-lg fixed top-0 left-0 right-0 z-50">
       <div className="navbar-start">
         <div className="dropdown">
           <div tabIndex={0} role="button" className="btn btn-ghost btn-circle">
@@ -13,19 +13,23 @@ const Navbar = () => {
           </div>
           <ul
             tabIndex={0}
-            className="menu menu-sm dropdown-content bg-gray-800 rounded-box z-1 mt-3 w-52 p-3 shadow-lg text-white"
+            className="menu menu-sm dropdown-content bg-gray-800 rounded-box z-[1] mt-3 w-52 p-2 shadow-lg"
           >
-            <li><Link href="/dashboard" className="hover:bg-gray-700 p-2 rounded">Dashboard</Link></li>
-            <li><Link href="/expenses" className="hover:bg-gray-700 p-2 rounded">All Expenses</Link></li>
-            <li><Link href="/reports" className="hover:bg-gray-700 p-2 rounded">Reports</Link></li>
-            <li><Link href="/installments" className="hover:bg-gray-700 p-2 rounded">Installments</Link></li>
-            <li><a className="hover:bg-gray-700 p-2 rounded">Settings</a></li>
+            <li><Link href="/dashboard" className="text-white hover:bg-gray-700 rounded">Dashboard</Link></li>
+            <li><Link href="/expenses" className="text-white hover:bg-gray-700 rounded">All Expenses</Link></li>
+            <li><Link href="/reports" className="text-white hover:bg-gray-700 rounded">Reports</Link></li>
+            <li><Link href="/installments" className="text-white hover:bg-gray-700 rounded">Installments</Link></li>
+            <li><a href="#" className="text-white hover:bg-gray-700 rounded">Settings</a></li>
           </ul>
         </div>
       </div>
+      
       <div className="navbar-center">
-        <Link href="/dashboard" className="btn btn-ghost text-xl font-semibold">Finance Tracker</Link>
+        <Link href="/dashboard" className="btn btn-ghost text-xl font-semibold normal-case">
+          Finance Tracker
+        </Link>
       </div>
+      
       <div className="navbar-end">
         <button className="btn btn-ghost btn-circle">
           <div className="indicator">
@@ -35,6 +39,7 @@ const Navbar = () => {
             <span className="badge badge-xs badge-primary indicator-item"></span>
           </div>
         </button>
+        
         <div className="dropdown dropdown-end">
           <div tabIndex={0} role="button" className="btn btn-ghost btn-circle">
             <svg 
@@ -54,12 +59,14 @@ const Navbar = () => {
           </div>
           <ul 
             tabIndex={0} 
-            className="menu menu-sm dropdown-content bg-gray-800 rounded-box z-[1] mt-3 w-52 p-3 shadow-lg text-white"
+            className="menu menu-sm dropdown-content bg-gray-800 rounded-box z-[1] mt-3 w-52 p-2 shadow-lg"
           >
             <li>
-              <a className="hover:bg-gray-700 p-2 rounded">Profile</a>
+              <a href="#" className="text-white hover:bg-gray-700 rounded">Profile</a>
             </li>
-            <li><Link href="/login" className="hover:bg-gray-700 p-2 rounded">Logout</Link></li>
+            <li>
+              <Link href="/login" className="text-white hover:bg-gray-700 rounded">Logout</Link>
+            </li>
           </ul>
         </div>
       </div>
