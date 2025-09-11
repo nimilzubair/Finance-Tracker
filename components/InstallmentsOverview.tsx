@@ -1,4 +1,4 @@
-// components/InstallmentsOverview.tsx - ENHANCED with payment frequencies
+// components/InstallmentsOverview.tsx - FIXED overflow issue
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
@@ -55,10 +55,28 @@ const InstallmentsOverview = ({ showTitle = false }) => {
     }
   };
 
-  // Helper function to format amount safely
+  // Helper function to format amount safely with abbreviations for large numbers
   const formatAmount = (amount: number | string): string => {
     const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-    return isNaN(num) ? '$0.00' : `$${num.toFixed(2)}`;
+    if (isNaN(num)) return '$0.00';
+    
+    // For very large numbers, use abbreviations
+    if (num >= 1000000000) {
+      return `$${(num / 1000000000).toFixed(1)}B`;
+    } else if (num >= 1000000) {
+      return `$${(num / 1000000).toFixed(1)}M`;
+    } else if (num >= 1000) {
+      return `$${(num / 1000).toFixed(1)}K`;
+    } else {
+      return `$${num.toFixed(2)}`;
+    }
+  };
+
+  // Helper function for full amount display with proper formatting
+  const formatFullAmount = (amount: number | string): string => {
+    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
+    if (isNaN(num)) return '$0.00';
+    return `$${num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   // Calculate progress percentage
@@ -167,8 +185,8 @@ const InstallmentsOverview = ({ showTitle = false }) => {
               <div key={installment.installmentid} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow">
                 {/* Header with title and status */}
                 <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <h3 className="font-medium text-gray-900 dark:text-gray-100 text-lg">
+                  <div className="flex-1 min-w-0"> {/* Added flex-1 min-w-0 for proper truncation */}
+                    <h3 className="font-medium text-gray-900 dark:text-gray-100 text-lg truncate">
                       {installment.installmenttitle}
                     </h3>
                     <div className="flex items-center gap-2 mt-1">
@@ -182,7 +200,7 @@ const InstallmentsOverview = ({ showTitle = false }) => {
                       </span>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right ml-4 flex-shrink-0"> {/* Added flex-shrink-0 */}
                     <div className="text-blue-600 dark:text-blue-400 font-semibold text-lg">
                       {nextPaymentAmount}
                     </div>
@@ -233,7 +251,7 @@ const InstallmentsOverview = ({ showTitle = false }) => {
                   
                   <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400">
                     <span>{progress.toFixed(1)}% completed</span>
-                    <span>{periodsRemainingText}</span>
+                    <span className="text-right">{periodsRemainingText}</span>
                   </div>
                 </div>
                 
@@ -267,24 +285,24 @@ const InstallmentsOverview = ({ showTitle = false }) => {
         </div>
       )}
       
-      {/* Summary stats */}
+      {/* Summary stats - FIXED layout for large numbers */}
       {installments.length > 0 && (
         <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-700">
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4"> {/* Changed from grid-cols-3 to responsive */}
+            <div className="text-center p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
               <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                 {installments.filter(i => i.status === 'active').length}
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Active</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">Active</div>
             </div>
-            <div>
+            <div className="text-center p-3 bg-green-50 dark:bg-green-900/30 rounded-lg">
               <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                 {installments.filter(i => i.status === 'completed').length}
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Completed</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">Completed</div>
             </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-600 dark:text-gray-400">
+            <div className="text-center p-3 bg-gray-50 dark:bg-gray-900/30 rounded-lg"> {/* Added padding and background */}
+              <div className="text-xl font-bold text-gray-600 dark:text-gray-400 break-words"> {/* Added break-words */}
                 {formatAmount(installments.reduce((sum, inst) => {
                   const remaining = typeof inst.remaining_amount === 'string' 
                     ? parseFloat(inst.remaining_amount) 
@@ -292,7 +310,16 @@ const InstallmentsOverview = ({ showTitle = false }) => {
                   return sum + remaining;
                 }, 0))}
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Total Remaining</div>
+              <div className="text-sm text-gray-500 dark:text-gray-400">Total Remaining</div>
+              {/* Full amount on hover */}
+              <div className="text-xs text-gray-400 dark:text-gray-500 mt-1" title={formatFullAmount(installments.reduce((sum, inst) => {
+                const remaining = typeof inst.remaining_amount === 'string' 
+                  ? parseFloat(inst.remaining_amount) 
+                  : inst.remaining_amount;
+                return sum + remaining;
+              }, 0))}>
+                Hover for exact amount
+              </div>
             </div>
           </div>
         </div>
