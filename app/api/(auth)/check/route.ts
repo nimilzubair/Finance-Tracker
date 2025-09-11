@@ -1,4 +1,3 @@
-// app/api/(auth)/check/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
 import { JWT_CONFIG } from "@/lib/jwt";
@@ -12,16 +11,17 @@ export async function GET(req: NextRequest) {
 
     const token = authHeader.substring(7);
 
-    // ✅ Verify token with jose
+    // Verify token with jose
     const secret = new TextEncoder().encode(JWT_CONFIG.secret);
     const { payload } = await jwtVerify(token, secret);
 
     return NextResponse.json({
       success: true,
       user: {
-        userid: payload.userId,
-        username: payload.username,
-        email: payload.email,
+        userid: payload.userId as string,
+        username: payload.username as string,
+        email: payload.email as string,
+        isGoogleAccount: payload.isGoogleAccount as boolean || false,
       },
     });
   } catch (err: any) {
