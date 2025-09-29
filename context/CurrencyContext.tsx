@@ -15,11 +15,19 @@ const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined
 
 export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { token } = useAuth();
-  const [currency, setCurrencyState] = useState('PKR');
-  const [exchangeRate, setExchangeRate] = useState(1);
+  const [currency, setCurrencyState] = useState<string>('PKR');
+  const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [loading, setLoading] = useState(true);
 
-  // Fetch user's saved currency once when token is available
+  // Load saved currency from localStorage first for instant UI
+  useEffect(() => {
+    const saved = localStorage.getItem('currency');
+    if (saved) {
+      setCurrencyState(saved);
+    }
+  }, []);
+
+  // Fetch user's saved currency from backend when token is ready
   useEffect(() => {
     if (token) {
       fetchCurrencySettings();
@@ -34,7 +42,10 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       if (response.ok) {
         const data = await response.json();
-        setCurrencyState(data.currency || 'PKR');
+        if (data.currency) {
+          setCurrencyState(data.currency);
+          localStorage.setItem('currency', data.currency);
+        }
       }
     } catch (error) {
       console.error('Error fetching currency settings:', error);
@@ -45,16 +56,16 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Fetch exchange rate whenever currency changes
   useEffect(() => {
-    if (currency !== 'PKR' && token) {
-      fetchExchangeRate();
+    if (currency && currency !== 'PKR' && token) {
+      fetchExchangeRate(currency);
     } else {
       setExchangeRate(1);
     }
   }, [currency, token]);
 
-  const fetchExchangeRate = async () => {
+  const fetchExchangeRate = async (toCurrency: string) => {
     try {
-      const response = await fetch(`/api/settings/exchange-rate?from=PKR&to=${currency}`, {
+      const response = await fetch(`/api/settings/exchange-rate?from=PKR&to=${toCurrency}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -71,18 +82,19 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const convertAmount = (amount: number): number => amount * exchangeRate;
 
   const formatCurrency = (amount: number): string => {
-    const convertedAmount = convertAmount(amount);
+    const converted = convertAmount(amount);
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
-      currency: currency,
+      currency,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
-    }).format(convertedAmount);
+    }).format(converted);
   };
 
   const updateCurrency = async (newCurrency: string) => {
-    // Optimistic update: immediately update UI
+    // Optimistic update
     setCurrencyState(newCurrency);
+    localStorage.setItem('currency', newCurrency);
 
     try {
       const response = await fetch('/api/settings/currency', {
@@ -99,7 +111,7 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     } catch (error) {
       console.error('Error updating currency:', error);
-      // Rollback to DB value if update fails
+      // Roll back to server value if PUT fails
       await fetchCurrencySettings();
     }
   };

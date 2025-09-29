@@ -1,7 +1,8 @@
-// components/RecentExpenses.tsx - FIXED
+// components/RecentExpenses.tsx - WITH CURRENCY CONTEXT
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useCurrency } from '@/context/CurrencyContext';
 
 interface Expense {
   expensetitle: string;
@@ -17,6 +18,7 @@ interface RecentExpensesProps {
 
 const RecentExpenses = ({ showTitle = false, limit = 5 }: RecentExpensesProps) => {
   const { token } = useAuth();
+  const { formatCurrency } = useCurrency();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,11 +32,11 @@ const RecentExpenses = ({ showTitle = false, limit = 5 }: RecentExpensesProps) =
   const fetchRecentExpenses = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const response = await fetch(`/api/expenses/recent?limit=${limit}`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
@@ -54,17 +56,12 @@ const RecentExpenses = ({ showTitle = false, limit = 5 }: RecentExpensesProps) =
     }
   };
 
-  const formatAmount = (amount: number | string): string => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-    return `$${isNaN(num) ? '0.00' : num.toFixed(2)}`;
-  };
-
   const formatDate = (dateString: string): string => {
     try {
       return new Date(dateString).toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
-        year: 'numeric'
+        year: 'numeric',
       });
     } catch {
       return dateString;
@@ -112,13 +109,25 @@ const RecentExpenses = ({ showTitle = false, limit = 5 }: RecentExpensesProps) =
       {!error && expenses.length === 0 ? (
         <div className="text-center py-6">
           <div className="mb-3">
-            <svg className="mx-auto h-8 w-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            <svg
+              className="mx-auto h-8 w-8 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
             </svg>
           </div>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mb-3">No recent expenses</p>
-          <a 
-            href="/dashboard?tab=expenses&subtab=add" 
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-3">
+            No recent expenses
+          </p>
+          <a
+            href="/dashboard?tab=expenses&subtab=add"
             className="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium"
           >
             Add your first expense
@@ -126,26 +135,32 @@ const RecentExpenses = ({ showTitle = false, limit = 5 }: RecentExpensesProps) =
         </div>
       ) : (
         <div className="space-y-3">
-          {expenses.map((expense, index) => (
-            <div
-              key={`${expense.expensetitle}-${expense.paiddate}-${index}`}
-              className="flex justify-between items-center py-3 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
-            >
-              <div className="flex-1 min-w-0">
-                <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                  {expense.expensetitle}
-                </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {formatDate(expense.paiddate)}
-                </p>
+          {expenses.map((expense, index) => {
+            const num =
+              typeof expense.amount === 'string'
+                ? parseFloat(expense.amount)
+                : expense.amount;
+            return (
+              <div
+                key={`${expense.expensetitle}-${expense.paiddate}-${index}`}
+                className="flex justify-between items-center py-3 border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+              >
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                    {expense.expensetitle}
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {formatDate(expense.paiddate)}
+                  </p>
+                </div>
+                <div className="text-right ml-4">
+                  <span className="text-red-600 dark:text-red-400 font-semibold">
+                    {formatCurrency(num)}
+                  </span>
+                </div>
               </div>
-              <div className="text-right ml-4">
-                <span className="text-red-600 dark:text-red-400 font-semibold">
-                  -{formatAmount(expense.amount)}
-                </span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -155,13 +170,15 @@ const RecentExpenses = ({ showTitle = false, limit = 5 }: RecentExpensesProps) =
           disabled={loading}
           className="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium disabled:opacity-50 flex items-center gap-1"
         >
-          {loading && <div className="w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>}
+          {loading && (
+            <div className="w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          )}
           Refresh
         </button>
-        
+
         {expenses.length > 0 && (
-          <a 
-            href="/dashboard?tab=expenses" 
+          <a
+            href="/dashboard?tab=expenses"
             className="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 text-sm font-medium"
           >
             View all expenses →

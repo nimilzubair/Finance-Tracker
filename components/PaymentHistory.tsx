@@ -2,6 +2,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { useCurrency } from '@/context/CurrencyContext';
 
 interface Payment {
   installmentdetailid: number;
@@ -23,6 +24,7 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({
   onPaymentRecorded 
 }) => {
   const { token } = useAuth();
+  const { formatCurrency } = useCurrency();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showLogForm, setShowLogForm] = useState(false);
@@ -53,11 +55,6 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({
     } finally {
       setLoading(false);
     }
-  };
-
-  const formatAmount = (amount: number | string) => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-    return isNaN(num) ? '$0.00' : `$${num.toFixed(2)}`;
   };
 
   const formatDate = (dateString: string) => {
@@ -103,7 +100,6 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({
 
       {showLogForm && (
         <div className="mb-6">
-          {/* We'll implement this component next */}
           <div className="text-sm text-gray-500 dark:text-gray-400 mb-2">
             Payment form will be implemented here
           </div>
@@ -142,28 +138,34 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {payments.map((payment) => (
-                <tr key={payment.installmentdetailid} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
-                    {formatDate(payment.paiddate)}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-semibold text-green-600 dark:text-green-400">
-                    {formatAmount(payment.amountpaid)}
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      payment.is_advance
-                        ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100'
-                        : 'bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100'
-                    }`}>
-                      {payment.is_advance ? 'Advance' : 'Regular'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
-                    {payment.payment_period || '-'}
-                  </td>
-                </tr>
-              ))}
+              {payments.map((payment) => {
+                const num = typeof payment.amountpaid === 'string'
+                  ? parseFloat(payment.amountpaid)
+                  : payment.amountpaid;
+
+                return (
+                  <tr key={payment.installmentdetailid} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                      {formatDate(payment.paiddate)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-green-600 dark:text-green-400">
+                      {formatCurrency(num)}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        payment.is_advance
+                          ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100'
+                          : 'bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100'
+                      }`}>
+                        {payment.is_advance ? 'Advance' : 'Regular'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                      {payment.payment_period || '-'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot className="bg-gray-100 dark:bg-gray-700">
               <tr>
@@ -171,12 +173,14 @@ const PaymentHistory: React.FC<PaymentHistoryProps> = ({
                   Total
                 </td>
                 <td className="px-4 py-3 text-sm font-semibold text-green-600 dark:text-green-400">
-                  {formatAmount(payments.reduce((sum, payment) => {
-                    const amount = typeof payment.amountpaid === 'string' 
-                      ? parseFloat(payment.amountpaid) 
-                      : payment.amountpaid;
-                    return sum + amount;
-                  }, 0))}
+                  {formatCurrency(
+                    payments.reduce((sum, payment) => {
+                      const amount = typeof payment.amountpaid === 'string' 
+                        ? parseFloat(payment.amountpaid) 
+                        : payment.amountpaid;
+                      return sum + amount;
+                    }, 0)
+                  )}
                 </td>
                 <td colSpan={2}></td>
               </tr>
