@@ -13,6 +13,7 @@ interface Installment {
   payment_frequency?: string;
   next_payment_period?: number;
   next_due_date?: string;
+  installmentdurationinmonths: number;
 }
 
 interface LogPaymentFormProps {
