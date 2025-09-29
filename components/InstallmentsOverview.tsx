@@ -44,7 +44,7 @@ const InstallmentsOverview = ({ showTitle = false }) => {
       
       if (response.ok) {
         const data = await response.json();
-        setInstallments(data);
+        setInstallments(data.installments || []);
       } else {
         console.error('Failed to fetch installments:', response.status);
       }

@@ -77,6 +77,7 @@ export default function Login() {
       const data = await res.json();
       
       if (res.ok) {
+        localStorage.setItem("token", data.token);
         login(data.token, data.user);
         router.push('/dashboard');
       } else {
@@ -107,6 +108,7 @@ export default function Login() {
       const data = await response.json();
       
       if (response.ok) {
+        localStorage.setItem("token", data.token);
         login(data.token, data.user);
         router.push('/dashboard');
       } else {

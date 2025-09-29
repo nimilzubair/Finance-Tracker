@@ -54,6 +54,7 @@ export default function RegisterPage() {
 
       // Auto-login after successful registration
       if (data.token && data.user) {
+        localStorage.setItem("token", data.token);
         login(data.token, data.user);
         router.push('/dashboard');
       } else {

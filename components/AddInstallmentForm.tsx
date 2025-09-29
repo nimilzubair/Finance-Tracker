@@ -82,54 +82,48 @@ const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({
     }
   }, [editingInstallment]);
 
-  // Calculate payment amounts based on frequency
-  useEffect(() => {
-    const total = parseFloat(formData.totalamount) || 0;
-    const advance = formData.advancepaid ? (parseFloat(formData.advanceamount) || 0) : 0;
-    const netAmount = total - advance;
-    const durationMonths = parseInt(formData.installmentdurationinmonths) || 1;
-    
-    let totalPeriods = durationMonths;
-    let amountPerPeriod = 0;
-    
-    if (netAmount > 0) {
-      switch (formData.payment_frequency) {
-        case 'monthly':
-          totalPeriods = durationMonths;
-          amountPerPeriod = netAmount / totalPeriods;
-          break;
-        case 'weekly':
-          totalPeriods = Math.ceil((durationMonths * 30) / 7);
-          amountPerPeriod = netAmount / totalPeriods;
-          break;
-        case 'bi-weekly':
-          totalPeriods = Math.ceil((durationMonths * 30) / 14);
-          amountPerPeriod = netAmount / totalPeriods;
-          break;
-        case 'quarterly':
-          totalPeriods = Math.ceil(durationMonths / 3);
-          amountPerPeriod = netAmount / totalPeriods;
-          break;
-        case 'yearly':
-          totalPeriods = Math.ceil(durationMonths / 12);
-          amountPerPeriod = netAmount / totalPeriods;
-          break;
-        case 'custom':
-          const intervalDays = parseInt(formData.payment_interval_days) || 30;
-          totalPeriods = Math.ceil((durationMonths * 30) / intervalDays);
-          amountPerPeriod = netAmount / totalPeriods;
-          break;
-        default:
-          amountPerPeriod = netAmount / totalPeriods;
-      }
-    }
-    
-    setCalculatedValues({
-      amountPerPeriod: amountPerPeriod,
-      totalPeriods: totalPeriods,
-      netAmount: netAmount
-    });
-  }, [formData.totalamount, formData.advancepaid, formData.advanceamount, formData.installmentdurationinmonths, formData.payment_frequency, formData.payment_interval_days]);
+  // ADD THIS HELPER FUNCTION BEFORE THE useEffect
+const calculateTotalPeriods = (durationMonths: number, frequency: string, customDays?: number): number => {
+  switch (frequency) {
+    case 'weekly':
+      return Math.ceil((durationMonths * 30) / 7);
+    case 'bi-weekly':
+      return Math.ceil((durationMonths * 30) / 14);
+    case 'quarterly':
+      return Math.ceil(durationMonths / 3);
+    case 'yearly':
+      return Math.ceil(durationMonths / 12);
+    case 'custom':
+      return customDays ? Math.ceil((durationMonths * 30) / customDays) : durationMonths;
+    case 'monthly':
+    default:
+      return durationMonths;
+  }
+};
+// Calculate payment amounts based on frequency
+useEffect(() => {
+  const total = parseFloat(formData.totalamount) || 0;
+  const advance = formData.advancepaid ? (parseFloat(formData.advanceamount) || 0) : 0;
+  const netAmount = total - advance;
+  const durationMonths = parseInt(formData.installmentdurationinmonths) || 1;
+  const intervalDays = formData.payment_frequency === 'custom' ? parseInt(formData.payment_interval_days) || 30 : undefined;
+
+  const totalPeriods = calculateTotalPeriods(durationMonths, formData.payment_frequency, intervalDays);
+  const amountPerPeriod = totalPeriods > 0 ? netAmount / totalPeriods : 0;
+
+  setCalculatedValues({
+    amountPerPeriod,
+    totalPeriods,
+    netAmount
+  });
+}, [
+  formData.totalamount,
+  formData.advancepaid,
+  formData.advanceamount,
+  formData.installmentdurationinmonths,
+  formData.payment_frequency,
+  formData.payment_interval_days
+]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -468,33 +462,33 @@ const AddInstallmentForm: React.FC<AddInstallmentFormProps> = ({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="flex-1 bg-purple-500 dark:bg-purple-600 text-white py-3 px-4 rounded-md 
-                       hover:bg-purple-600 dark:hover:bg-purple-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
+            className="flex-1 bg-purple-500 dark:bg-purple-600 text-white py-2 px-4 rounded-md 
+                       hover:bg-purple-600 dark:hover:bg-purple-700 focus:outline-none focus:ring-2 
+                       focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
           >
-            {isSubmitting && (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            )}
-            {isSubmitting ? (editingInstallment ? 'Updating...' : 'Adding...') : (editingInstallment ? 'Update Plan' : 'Add Plan')}
+            {isSubmitting ? 'Processing...' : (editingInstallment ? 'Update Plan' : 'Add Plan')}
           </button>
-
-          {onCancel && (
+          
+          {editingInstallment && (
             <button
               type="button"
               onClick={onCancel}
               disabled={isSubmitting}
-              className="flex-1 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 py-3 px-4 rounded-md 
-                         hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 transition-colors"
+              className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
+                         text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 
+                         disabled:opacity-50 transition-colors"
             >
               Cancel
             </button>
           )}
         </div>
 
+        {/* Message */}
         {message && (
-          <div className={`p-3 rounded-md text-center font-medium ${
-            messageType === 'success'
-              ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100'
-              : 'bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100'
+          <div className={`p-3 rounded-md ${
+            messageType === 'success' 
+              ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' 
+              : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'
           }`}>
             {message}
           </div>

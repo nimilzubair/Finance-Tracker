@@ -1,4 +1,4 @@
-// app/dashboard/page.tsx - UPDATED WITH FULL CRUD FUNCTIONALITY
+// app/dashboard/page.tsx - UPDATED WITH CURRENCY SUPPORT
 'use client';
 import React, { useState, useEffect } from 'react';
 import Layout from '@/components/Layout';
@@ -11,6 +11,7 @@ import InstallmentsOverview from '@/components/InstallmentsOverview';
 import AddInstallmentForm from '@/components/AddInstallmentForm';
 import AddIncomeForm from '@/components/AddIncomeForm';
 import { useAuth } from '@/context/AuthContext';
+import { useCurrency } from '@/context/CurrencyContext';
 
 interface SummaryData {
   totalBalance: number;
@@ -105,6 +106,7 @@ const isIncome = (item: any): item is Income => {
 
 const Dashboard = () => {
   const { user, token } = useAuth();
+  const { formatCurrency } = useCurrency();
   const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
 
   // ✅ Start with stable defaults so server and client match
@@ -122,7 +124,6 @@ const Dashboard = () => {
     if (urlTab) setActiveTab(urlTab);
     if (urlSubTab) setActiveSubTab(urlSubTab);
   }, []);
-
 
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
@@ -214,7 +215,7 @@ const Dashboard = () => {
       const res = await makeAuthenticatedRequest('/api/installments/upcoming');
       if (res.ok) {
         const data = await res.json();
-        setUpcomingPayments(Array.isArray(data) ? data : []);
+        setUpcomingPayments(Array.isArray(data.upcoming) ? data.upcoming : []);
       }
     } catch (err) {
       console.error('Error fetching upcoming payments', err);
@@ -229,8 +230,7 @@ const Dashboard = () => {
         month: selectedMonth.toString(),
         year: selectedYear.toString()
       });
-      console.log("Params month: ", params.get("month"));
-      console.log("Params year: ", params.get("year"));
+      
       const res = await makeAuthenticatedRequest(`/api/expenses/all?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -306,7 +306,7 @@ const Dashboard = () => {
       const res = await makeAuthenticatedRequest(`/api/installments?${params}`);
       if (res.ok) {
         const data = await res.json();
-        setInstallments(Array.isArray(data) ? data : []);
+        setInstallments(Array.isArray(data.installments) ? data.installments : []);
       } else {
         throw new Error(`Failed to fetch installments: ${res.status}`);
       }
@@ -319,70 +319,68 @@ const Dashboard = () => {
   };
 
   const handleDeleteItem = async (type: string, id: number | undefined) => {
-  if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
+    if (!confirm(`Are you sure you want to delete this ${type}?`)) return;
 
-  try {
-    let endpoint = '';
-    switch (type) {
-      case 'expense':
-        endpoint = '/api/expenses/all';
-        break;
-      case 'income':
-        endpoint = '/api/income';
-        break;
-      case 'loan':
-        endpoint = '/api/loans';
-        break;
-      case 'installment':
-        endpoint = '/api/installments';
-        break;
-      default:
-        return;
-    }
-
-    const res = await makeAuthenticatedRequest(endpoint, {
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        // Send the ID in the request body based on the type
-        expenseid: type === 'expense' ? id : undefined,
-        incomeid: type === 'income' ? id : undefined,
-        loanid: type === 'loan' ? id : undefined,
-        installmentid: type === 'installment' ? id : undefined,
-      }),
-    });
-
-    if (res.ok) {
-      // Refresh the data
+    try {
+      let endpoint = '';
       switch (type) {
         case 'expense':
-          fetchAllExpenses();
+          endpoint = '/api/expenses/all';
           break;
         case 'income':
-          fetchAllIncomes();
+          endpoint = '/api/income';
           break;
         case 'loan':
-          fetchAllLoans();
+          endpoint = '/api/loans';
           break;
         case 'installment':
-          fetchAllInstallments();
+          endpoint = '/api/installments';
           break;
+        default:
+          return;
       }
-      fetchSummaryData();
-      setError(null);
-    } else {
-      throw new Error(`Failed to delete ${type}`);
+
+      const res = await makeAuthenticatedRequest(endpoint, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          expenseid: type === 'expense' ? id : undefined,
+          incomeid: type === 'income' ? id : undefined,
+          loanid: type === 'loan' ? id : undefined,
+          installmentid: type === 'installment' ? id : undefined,
+        }),
+      });
+
+      if (res.ok) {
+        // Refresh the data
+        switch (type) {
+          case 'expense':
+            fetchAllExpenses();
+            break;
+          case 'income':
+            fetchAllIncomes();
+            break;
+          case 'loan':
+            fetchAllLoans();
+            break;
+          case 'installment':
+            fetchAllInstallments();
+            break;
+        }
+        fetchSummaryData();
+        setError(null);
+      } else {
+        throw new Error(`Failed to delete ${type}`);
+      }
+    } catch (err: any) {
+      console.error(`Error deleting ${type}:`, err);
+      setError(`Failed to delete ${type}`);
     }
-  } catch (err: any) {
-    console.error(`Error deleting ${type}:`, err);
-    setError(`Failed to delete ${type}`);
-  }
-};
+  };
 
   const handleEditItem = (type: 'expense' | 'income' | 'loan' | 'installment', data: any) => {
-    // Validate the data type before setting
     if (
       (type === 'expense' && isExpense(data)) ||
       (type === 'income' && isIncome(data)) ||
@@ -434,9 +432,8 @@ const Dashboard = () => {
     }
   };
 
-  const formatAmount = (amount: number | string) => {
-    const num = typeof amount === 'string' ? parseFloat(amount) : amount;
-    return isNaN(num) ? '0.00' : num.toFixed(2);
+  const getAmountAsNumber = (amount: number | string): number => {
+    return typeof amount === 'string' ? parseFloat(amount) : amount;
   };
 
   const formatDate = (dateString: string) => {
@@ -474,22 +471,22 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
           <SummaryCard
             title="Total Balance"
-            value={summaryData ? `$${summaryData.totalBalance.toFixed(2)}` : loadingSummary ? 'Loading...' : 'N/A'}
+            value={summaryData ? formatCurrency(summaryData.totalBalance) : loadingSummary ? 'Loading...' : 'N/A'}
             icon={<BalanceIcon />}
           />
           <SummaryCard
             title="Monthly Income"
-            value={summaryData ? `$${summaryData.monthlyIncome.toFixed(2)}` : loadingSummary ? 'Loading...' : 'N/A'}
+            value={summaryData ? formatCurrency(summaryData.monthlyIncome) : loadingSummary ? 'Loading...' : 'N/A'}
             icon={<IncomeIcon />}
           />
           <SummaryCard
             title="Monthly Expenses"
-            value={summaryData ? `$${summaryData.monthlyExpenses.toFixed(2)}` : loadingSummary ? 'Loading...' : 'N/A'}
+            value={summaryData ? formatCurrency(summaryData.monthlyExpenses) : loadingSummary ? 'Loading...' : 'N/A'}
             icon={<ExpensesIcon />}
           />
           <SummaryCard
             title="Net Cash Flow"
-            value={summaryData ? `$${summaryData.netCashFlow.toFixed(2)}` : loadingSummary ? 'Loading...' : 'N/A'}
+            value={summaryData ? formatCurrency(summaryData.netCashFlow) : loadingSummary ? 'Loading...' : 'N/A'}
             icon={<NetFlowIcon />}
           />
         </div>
@@ -506,7 +503,7 @@ const Dashboard = () => {
               {upcomingPayments.map((payment, idx) => (
                 <div key={idx} className="flex justify-between items-center py-2 px-3 bg-gray-50 dark:bg-gray-700 rounded">
                   <span className="font-medium">{payment.installmenttitle}</span>
-                  <span className="text-red-600 font-semibold">${formatAmount(payment.amountdue)}</span>
+                  <span className="text-red-600 font-semibold">{formatCurrency(payment.amountdue)}</span>
                   <span className="text-sm text-gray-500">{formatDate(payment.duedate)}</span>
                 </div>
               ))}
@@ -677,7 +674,7 @@ const Dashboard = () => {
                                 {formatDate(income.income_date)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-green-600 dark:text-green-400">
-                                ${formatAmount(income.amount)}
+                                {formatCurrency(getAmountAsNumber(income.amount))}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm">
                                 <div className="flex gap-2">
@@ -704,7 +701,7 @@ const Dashboard = () => {
                               Total
                             </td>
                             <td className="px-6 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
-                              ${formatAmount(incomes.reduce((sum, income) => sum + (typeof income.amount === 'string' ? parseFloat(income.amount) : income.amount), 0))}
+                              {formatCurrency(incomes.reduce((sum, income) => sum + getAmountAsNumber(income.amount), 0))}
                             </td>
                             <td></td>
                           </tr>
@@ -844,7 +841,7 @@ const Dashboard = () => {
                                 {formatDate(exp.paiddate)}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-red-600 dark:text-red-400">
-                                ${formatAmount(exp.amount)}
+                                {formatCurrency(getAmountAsNumber(exp.amount))}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                                 {exp.category || 'Uncategorized'}
@@ -874,7 +871,7 @@ const Dashboard = () => {
                               Total
                             </td>
                             <td className="px-6 py-4 text-sm font-semibold text-red-600 dark:text-red-400">
-                              ${formatAmount(expenses.reduce((sum, expense) => sum + (typeof expense.amount === 'string' ? parseFloat(expense.amount) : expense.amount), 0))}
+                              {formatCurrency(expenses.reduce((sum, expense) => sum + getAmountAsNumber(expense.amount), 0))}
                             </td>
                             <td colSpan={2}></td>
                           </tr>
@@ -1001,7 +998,7 @@ const Dashboard = () => {
                             <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Total Amount</th>
                             <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Paid</th>
                             <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Remaining</th>
-                                                        <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
@@ -1011,13 +1008,13 @@ const Dashboard = () => {
                                 {loan.loantitle}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                                ${formatAmount(loan.totalamount)}
+                                {formatCurrency(getAmountAsNumber(loan.totalamount))}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 dark:text-green-400">
-                                ${formatAmount(loan.amountpaid || 0)}
+                                {formatCurrency(getAmountAsNumber(loan.amountpaid || 0))}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 dark:text-blue-400">
-                                ${formatAmount(loan.amountleft || loan.totalamount)}
+                                {formatCurrency(getAmountAsNumber(loan.amountleft || loan.totalamount))}
                               </td>
                               <td className="px-6 py-4 whitespace-nowrap text-sm">
                                 <div className="flex gap-2">
@@ -1044,15 +1041,15 @@ const Dashboard = () => {
                               Total
                             </td>
                             <td className="px-6 py-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                              ${formatAmount(loans.reduce((sum, loan) => sum + (typeof loan.totalamount === 'string' ? parseFloat(loan.totalamount) : loan.totalamount), 0))}
+                              {formatCurrency(loans.reduce((sum, loan) => sum + getAmountAsNumber(loan.totalamount), 0))}
                             </td>
                             <td className="px-6 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
-                              ${formatAmount(loans.reduce((sum, loan) => sum + (typeof loan.amountpaid === 'string' ? parseFloat(loan.amountpaid) : (loan.amountpaid || 0)), 0))}
+                              {formatCurrency(loans.reduce((sum, loan) => sum + getAmountAsNumber(loan.amountpaid || 0), 0))}
                             </td>
                             <td className="px-6 py-4 text-sm font-semibold text-blue-600 dark:text-blue-400">
-                              ${formatAmount(loans.reduce((sum, loan) => {
-                                const total = typeof loan.totalamount === 'string' ? parseFloat(loan.totalamount) : loan.totalamount;
-                                const paid = typeof loan.amountpaid === 'string' ? parseFloat(loan.amountpaid) : (loan.amountpaid || 0);
+                              {formatCurrency(loans.reduce((sum, loan) => {
+                                const total = getAmountAsNumber(loan.totalamount);
+                                const paid = getAmountAsNumber(loan.amountpaid || 0);
                                 return sum + (total - paid);
                               }, 0))}
                             </td>
@@ -1108,219 +1105,220 @@ const Dashboard = () => {
                 </button>
               </div>
 
-              {/* // Replace the installments table section in your dashboard with this enhanced version: */}
-{(!activeSubTab || activeSubTab === 'view') && (
-  <div>
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
-      <h2 className="text-xl font-semibold text-blue-600 dark:text-blue-400">
-        All Installment Plans
-      </h2>
-      <div className="flex gap-2">
-        <select
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-        >
-          <option value={0}>All Months</option>
-          <option value={1}>January</option>
-          <option value={2}>February</option>
-          <option value={3}>March</option>
-          <option value={4}>April</option>
-          <option value={5}>May</option>
-          <option value={6}>June</option>
-          <option value={7}>July</option>
-          <option value={8}>August</option>
-          <option value={9}>September</option>
-          <option value={10}>October</option>
-          <option value={11}>November</option>
-          <option value={12}>December</option>
-        </select>
-        <select
-          value={selectedYear}
-          onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-        >
-          <option value={0}>All Years</option>
-          {availableYears.map(year => (
-            <option key={year} value={year}>{year}</option>
-          ))}
-        </select>
-        <button
-          onClick={fetchAllInstallments}
-          className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
-        >
-          Apply
-        </button>
-      </div>
-    </div>
-    {loadingInstallments ? (
-      <div className="flex items-center justify-center py-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
-        <span className="ml-2">Loading installments...</span>
-      </div>
-    ) : installments.length === 0 ? (
-      <div className="text-center py-8">
-        <p className="text-gray-500 mb-4">
-          {selectedMonth === 0 && selectedYear === 0 
-            ? 'No installment plans recorded' 
-            : `No installments found for ${selectedMonth === 0 ? 'all months' : new Date(selectedYear, selectedMonth - 1).toLocaleString('default', { month: 'long' })} ${selectedYear === 0 ? 'all years' : selectedYear}`
-          }
-        </p>
-        <button
-          onClick={() => handleSubTabChange('add')}
-          className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
-        >
-          Add Your First Installment
-        </button>
-      </div>
-    ) : (
-      <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow-md">
-        <table className="w-full">
-          <thead className="bg-gray-100 dark:bg-gray-700">
-            <tr>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Title</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Frequency</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Total</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Paid</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Remaining</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Progress</th>
-              <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {installments.map((inst, index) => {
-              const progress = ((typeof inst.total_paid === 'string' ? parseFloat(inst.total_paid) : (inst.total_paid || 0)) / (typeof inst.totalamount === 'string' ? parseFloat(inst.totalamount) : inst.totalamount)) * 100;
-              
-              // Format payment frequency for display
-              const formatFrequency = (frequency?: string, intervalDays?: number | string) => {
-                switch (frequency) {
-                  case 'weekly': return 'Weekly';
-                  case 'bi-weekly': return 'Bi-Weekly';
-                  case 'monthly': return 'Monthly';
-                  case 'quarterly': return 'Quarterly';
-                  case 'yearly': return 'Yearly';
-                  case 'custom': return intervalDays ? `Every ${intervalDays}d` : 'Custom';
-                  default: return 'Monthly';
-                }
-              };
-
-              // Get status badge color
-              const getStatusColor = (status?: string) => {
-                switch (status) {
-                  case 'completed':
-                    return 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100';
-                  case 'active':
-                    return 'bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100';
-                  case 'pending':
-                    return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100';
-                  default:
-                    return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100';
-                }
-              };
-
-              return (
-                <tr key={inst.installmentid ?? `installment-${index}`} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                  <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
-                    <div>
-                      <div className="font-medium">{inst.installmenttitle}</div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        {inst.payments_made || 0}/{inst.installmentdurationinmonths} payments
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <div className="text-gray-900 dark:text-gray-100">
-                      {formatFrequency(inst.payment_frequency, inst.payment_interval_days)}
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {formatAmount(inst.amountpermonth || 0)}/period
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(inst.status)}`}>
-                      {inst.status ? inst.status.charAt(0).toUpperCase() + inst.status.slice(1) : 'Active'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
-                    {formatAmount(inst.totalamount)}
-                    {inst.advancepaid && (
-                      <div className="text-xs text-yellow-600 dark:text-yellow-400">
-                        Advance: {formatAmount(inst.advanceamount || 0)}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 dark:text-green-400">
-                    {formatAmount(inst.total_paid || 0)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 dark:text-blue-400">
-                    {formatAmount(inst.remaining_amount || inst.totalamount)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                      <div 
-                        className={`h-2 rounded-full transition-all duration-300 ${
-                          progress === 100 
-                            ? 'bg-green-500' 
-                            : progress > 75 
-                            ? 'bg-blue-500' 
-                            : progress > 50 
-                            ? 'bg-yellow-500' 
-                            : 'bg-orange-500'
-                        }`}
-                        style={{ width: `${Math.min(progress, 100)}%` }}
-                      ></div>
-                    </div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {progress.toFixed(1)}%
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+              {(!activeSubTab || activeSubTab === 'view') && (
+                <div>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-4">
+                    <h2 className="text-xl font-semibold text-blue-600 dark:text-blue-400">
+                      All Installment Plans
+                    </h2>
                     <div className="flex gap-2">
-                      <button
-                        onClick={() => handleEditItem('installment', inst)}
-                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                      <select
+                        value={selectedMonth}
+                        onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                       >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDeleteItem('installment', inst.installmentid!)}
-                        className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                        <option value={0}>All Months</option>
+                        <option value={1}>January</option>
+                        <option value={2}>February</option>
+                        <option value={3}>March</option>
+                        <option value={4}>April</option>
+                        <option value={5}>May</option>
+                        <option value={6}>June</option>
+                        <option value={7}>July</option>
+                        <option value={8}>August</option>
+                        <option value={9}>September</option>
+                        <option value={10}>October</option>
+                        <option value={11}>November</option>
+                        <option value={12}>December</option>
+                      </select>
+                      <select
+                        value={selectedYear}
+                        onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                        className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                       >
-                        Delete
+                        <option value={0}>All Years</option>
+                        {availableYears.map(year => (
+                          <option key={year} value={year}>{year}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={fetchAllInstallments}
+                        className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors"
+                      >
+                        Apply
                       </button>
                     </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot className="bg-gray-100 dark:bg-gray-700">
-            <tr>
-              <td colSpan={3} className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-gray-100">
-                Total ({installments.length} plans)
-              </td>
-              <td className="px-6 py-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
-                {formatAmount(installments.reduce((sum, inst) => sum + (typeof inst.totalamount === 'string' ? parseFloat(inst.totalamount) : inst.totalamount), 0))}
-              </td>
-              <td className="px-6 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
-                {formatAmount(installments.reduce((sum, inst) => sum + (typeof inst.total_paid === 'string' ? parseFloat(inst.total_paid) : (inst.total_paid || 0)), 0))}
-              </td>
-              <td className="px-6 py-4 text-sm font-semibold text-blue-600 dark:text-blue-400">
-                {formatAmount(installments.reduce((sum, inst) => {
-                  const total = typeof inst.totalamount === 'string' ? parseFloat(inst.totalamount) : inst.totalamount;
-                  const paid = typeof inst.total_paid === 'string' ? parseFloat(inst.total_paid) : (inst.total_paid || 0);
-                  return sum + (total - paid);
-                }, 0))}
-              </td>
-              <td colSpan={2}></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-    )}
-  </div>
-)}
+                  </div>
+                  {loadingInstallments ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                      <span className="ml-2">Loading installments...</span>
+                    </div>
+                  ) : installments.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-500 mb-4">
+                        {selectedMonth === 0 && selectedYear === 0 
+                          ? 'No installment plans recorded' 
+                          : `No installments found for ${selectedMonth === 0 ? 'all months' : new Date(selectedYear, selectedMonth - 1).toLocaleString('default', { month: 'long' })} ${selectedYear === 0 ? 'all years' : selectedYear}`
+                        }
+                      </p>
+                      <button
+                        onClick={() => handleSubTabChange('add')}
+                        className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+                      >
+                        Add Your First Installment
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto bg-white dark:bg-gray-800 rounded-lg shadow-md">
+                      <table className="w-full">
+                        <thead className="bg-gray-100 dark:bg-gray-700">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Title</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Frequency</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Total</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Paid</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Remaining</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Progress</th>
+                            <th className="px-6 py-3 text-left text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                          {installments.map((inst, index) => {
+                            const totalAmount = getAmountAsNumber(inst.totalamount);
+                            const totalPaid = getAmountAsNumber(inst.total_paid || 0);
+                            const progress = (totalPaid / totalAmount) * 100;
+                            
+                            // Format payment frequency for display
+                            const formatFrequency = (frequency?: string, intervalDays?: number | string) => {
+                              switch (frequency) {
+                                case 'weekly': return 'Weekly';
+                                case 'bi-weekly': return 'Bi-Weekly';
+                                case 'monthly': return 'Monthly';
+                                case 'quarterly': return 'Quarterly';
+                                case 'yearly': return 'Yearly';
+                                case 'custom': return intervalDays ? `Every ${intervalDays}d` : 'Custom';
+                                default: return 'Monthly';
+                              }
+                            };
+
+                            // Get status badge color
+                            const getStatusColor = (status?: string) => {
+                              switch (status) {
+                                case 'completed':
+                                  return 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100';
+                                case 'active':
+                                  return 'bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100';
+                                case 'pending':
+                                  return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100';
+                                default:
+                                  return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100';
+                              }
+                            };
+
+                            return (
+                              <tr key={inst.installmentid ?? `installment-${index}`} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100">
+                                  <div>
+                                    <div className="font-medium">{inst.installmenttitle}</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                                      {inst.payments_made || 0}/{inst.installmentdurationinmonths} payments
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                  <div className="text-gray-900 dark:text-gray-100">
+                                    {formatFrequency(inst.payment_frequency, inst.payment_interval_days)}
+                                  </div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                                    {formatCurrency(getAmountAsNumber(inst.amountpermonth || 0))}/period
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(inst.status)}`}>
+                                    {inst.status ? inst.status.charAt(0).toUpperCase() + inst.status.slice(1) : 'Active'}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
+                                  {formatCurrency(totalAmount)}
+                                  {inst.advancepaid && (
+                                    <div className="text-xs text-yellow-600 dark:text-yellow-400">
+                                      Advance: {formatCurrency(getAmountAsNumber(inst.advanceamount || 0))}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 dark:text-green-400">
+                                  {formatCurrency(totalPaid)}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 dark:text-blue-400">
+                                  {formatCurrency(getAmountAsNumber(inst.remaining_amount || inst.totalamount))}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                    <div 
+                                      className={`h-2 rounded-full transition-all duration-300 ${
+                                        progress === 100 
+                                          ? 'bg-green-500' 
+                                          : progress > 75 
+                                          ? 'bg-blue-500' 
+                                          : progress > 50 
+                                          ? 'bg-yellow-500' 
+                                          : 'bg-orange-500'
+                                      }`}
+                                      style={{ width: `${Math.min(progress, 100)}%` }}
+                                    ></div>
+                                  </div>
+                                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    {progress.toFixed(1)}%
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => handleEditItem('installment', inst)}
+                                      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      onClick={() => handleDeleteItem('installment', inst.installmentid!)}
+                                      className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot className="bg-gray-100 dark:bg-gray-700">
+                          <tr>
+                            <td colSpan={3} className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                              Total ({installments.length} plans)
+                            </td>
+                            <td className="px-6 py-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                              {formatCurrency(installments.reduce((sum, inst) => sum + getAmountAsNumber(inst.totalamount), 0))}
+                            </td>
+                            <td className="px-6 py-4 text-sm font-semibold text-green-600 dark:text-green-400">
+                              {formatCurrency(installments.reduce((sum, inst) => sum + getAmountAsNumber(inst.total_paid || 0), 0))}
+                            </td>
+                            <td className="px-6 py-4 text-sm font-semibold text-blue-600 dark:text-blue-400">
+                              {formatCurrency(installments.reduce((sum, inst) => {
+                                const total = getAmountAsNumber(inst.totalamount);
+                                const paid = getAmountAsNumber(inst.total_paid || 0);
+                                return sum + (total - paid);
+                              }, 0))}
+                            </td>
+                            <td colSpan={2}></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
               {activeSubTab === 'add' && (
                 <div className="max-w-md mx-auto">
                   <AddInstallmentForm 

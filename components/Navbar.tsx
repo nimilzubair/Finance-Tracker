@@ -154,9 +154,9 @@ const Navbar: React.FC = () => {
               role="menu"
             >
               <li role="none">
-                <button className="w-full text-left px-3 py-2 rounded hover:bg-gray-700" onClick={() => setIsProfileOpen(false)}>
-                  Profile
-                </button>
+                <Link href="/settings" className="block px-3 py-2 rounded hover:bg-gray-700" onClick={() => setIsProfileOpen(false)}>
+                  Settings
+                </Link>
               </li>
               <li role="none">
                 <Link href="/login" className="block px-3 py-2 rounded hover:bg-gray-700" onClick={() => setIsProfileOpen(false)}>
