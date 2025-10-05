@@ -1,4 +1,4 @@
-💰 Finance Tracker
+<h2>💰 Finance Tracker</h2> <br>
 A Finance Tracker built with Next.js and Neon Serverless Database to help you manage your money smarter. Track expenses, loans, and installments with ease. Stay on top of your finances with notifications for upcoming installments and get a clear summary dashboard.
 
 Live Demo: https://finance-tracker-sigma-eight.vercel.app/
